@@ -15,7 +15,9 @@
 - **`pr-inbox` that survives updates.** New action `pr-reviewer.install-cli`.
 - **New inbox.** Arrow keys, preview, scrolling, turn single comments on/off, verdict keys, Markdown
   editing, new-commit warnings, background reviews by URL, history.
-- Tests for the manifest, prompt, diff filtering and checkout; CI on GitHub Actions.
+- Tests for the manifest, prompt, diff filtering and checkout.
+- README redesign: logos, badges, inbox screenshot, flow diagram, feature grid, collapsible keys and settings.
+- Node 22 or newer (Node 20 is end-of-life).
 
 ## 0.1.0
 
