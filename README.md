@@ -174,6 +174,14 @@ Reviews wait here for your final word. Open it with any of:
 | any terminal, incl. the Herdr desktop app | `pr-inbox` (set up once with `herdr plugin action invoke pr-reviewer.install-cli`) |
 | inside herdr | `herdr plugin action invoke pr-reviewer.inbox`, or <kbd>Ctrl</kbd>+<kbd>b</kbd> <kbd>i</kbd> with the [shortcut](#shortcuts) |
 
+You don't have to open it to know what's going on: the watcher shows up in herdr's agent list as **PR Reviewer**, with its status:
+
+| Status | Means |
+|---|---|
+| working, "reviewing api#212" | a review is running |
+| needs you, "3 waiting" | reviews are waiting for your final word |
+| idle, "inbox empty" | nothing to do |
+
 The top line shows whether the watcher is running and which PR it's reviewing right now. The list updates by itself. Each review is checked against GitHub:
 
 | Shows | Means |

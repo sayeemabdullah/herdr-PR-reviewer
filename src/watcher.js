@@ -1,9 +1,10 @@
 // Poll loop: reviews the open PRs your config asks for (see listPRsToReview in lib.js).
 import fs from "node:fs";
 import {
-  CONFIG_FILE, HERDR, WATCHER_FILE, getReviewed, headSha, listDrafts, listPRsToReview, loadConfig,
-  markReviewed, prKey, reviewPR, run, settingsFor, sleep, writeLauncher,
+  CONFIG_FILE, HERDR, WATCHER_FILE, getReviewed, headSha, listActiveReviews, listDrafts, listPRsToReview,
+  loadConfig, markReviewed, prKey, reviewPR, run, settingsFor, sleep, writeLauncher,
 } from "./lib.js";
+import { createReporter, releaseAgent, statusFor } from "./agent-status.js";
 
 writeLauncher();
 
@@ -18,12 +19,23 @@ const cleanup = () => {
     if (JSON.parse(fs.readFileSync(WATCHER_FILE, "utf8")).pid === process.pid) fs.rmSync(WATCHER_FILE);
   } catch {}
 };
-process.on("exit", cleanup);
+process.on("exit", () => { releaseAgent(PANE); cleanup(); });
 for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(sig, () => process.exit(0));
+
+// Show up in herdr's agent list as "PR Reviewer": working / N waiting / inbox empty.
+// Refreshed every few seconds too, so posting from the inbox shows up right away.
+const report = createReporter(PANE);
+const reportStatus = () => {
+  try {
+    report(statusFor({ drafts: listDrafts(), active: listActiveReviews() }));
+  } catch {}
+};
+setInterval(reportStatus, 5000).unref();
 
 /** Inbox section: shown in this pane and in its herdr label, e.g. "PR watcher · 2 waiting". */
 let lastInbox = "";
 function showInbox() {
+  reportStatus();
   const drafts = listDrafts();
   if (PANE) run(HERDR, ["pane", "rename", PANE, `PR watcher · ${drafts.length} waiting`], { allowFail: true });
   const text = drafts.length
@@ -88,6 +100,7 @@ while (true) {
   const runJob = async ({ pr, key, sha, prev }) => {
     const tag = (...a) => log(`[${key}]`, ...a);
     tag(`reviewing "${pr.title}"`);
+    setTimeout(reportStatus, 200); // the review's lock file exists by now → "working"
     try {
       const r = await reviewPR(cfg, pr.repo, pr.number, { log: (m) => tag(String(m).trim()) });
       if (r.skipped) tag(`skipped: ${r.skipped}`);
