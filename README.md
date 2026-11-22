@@ -279,6 +279,8 @@ All of these go in `config.json`. Any of them can also go on one repo, like `{ "
 
 | Setting | Default | What it does |
 |---|---|---|
+| `model` | `"opus"` | the Claude model for reviews, e.g. `"opus"`, `"sonnet"`, or `""` for Claude's default |
+| `effort` | `"high"` | how hard it thinks: `low`, `medium`, `high`, `xhigh`, `max`. Higher is slower and costs more |
 | `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
 | `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
 | `instructions` | `""` | extra things the reviewer should check |
@@ -293,11 +295,11 @@ All of these go in `config.json`. Any of them can also go on one repo, like `{ "
 
 | Setting | Default | What it does |
 |---|---|---|
-| `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --tools Read,Grep,Glob` | runs inside the checkout when `readCode` is on |
+| `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --safe-mode --tools Read,Grep,Glob` | runs inside the checkout when `readCode` is on |
 | `agent.command` | the same with `--tools ""` | diff-only reviews |
 | `agent.timeoutSeconds` | `900` | how long one review may take |
 
-Any AI CLI works: it gets the prompt on stdin and must print a JSON review on stdout.
+Any AI CLI works: it gets the prompt on stdin and must print a JSON review on stdout. `model` and `effort` are only passed to `claude`.
 
 > [!IMPORTANT]
 > Upgrading from 0.1? If your `config.json` has an `agent` block, delete it to get the new locked-down defaults.
@@ -317,6 +319,7 @@ The AI is told to treat the PR, its comments and the repo's files as **untrusted
 |---|---|
 | `--restricted` | no shell or other code-running tools, and none of your Claude settings are loaded |
 | `--strict-mcp-config` | none of your MCP servers (mail, drive, …) are available |
+| `--safe-mode` | no `CLAUDE.md`, hooks, skills or plugins, so a PR can't add a `CLAUDE.md` with instructions for the reviewer |
 | read-only tools | it can only **read** files, and only inside the PR's checkout |
 
 The checkout lives in the plugin's state folder (`repos/`, `worktrees/`), never in your own clones, and each review's checkout is removed afterwards. Reviews are posted as **you**, with a note saying they're AI-assisted.
