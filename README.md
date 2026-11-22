@@ -1,10 +1,6 @@
 <div align="center">
 
-<a href="https://herdr.dev"><img src="assets/herdr.png" alt="herdr" height="64"></a>
-&nbsp;&nbsp;<b>+</b>&nbsp;&nbsp;
-<a href="https://claude.com/claude-code"><img src="assets/claude.jpeg" alt="Claude" height="64"></a>
-&nbsp;&nbsp;<b>+</b>&nbsp;&nbsp;
-<a href="https://github.com"><img src="assets/github.png" alt="GitHub" height="64"></a>
+<img src="assets/header.png" alt="herdr + Claude + GitHub" width="420">
 
 # PR Reviewer for herdr
 
