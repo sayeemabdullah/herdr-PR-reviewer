@@ -39,7 +39,7 @@ function showInbox() {
   const drafts = listDrafts();
   if (PANE) run(HERDR, ["pane", "rename", PANE, `PR watcher · ${drafts.length} waiting`], { allowFail: true });
   const text = drafts.length
-    ? `Inbox — ${drafts.length} waiting for your final word (open the inbox: prefix+i, or herdr plugin action invoke pr-reviewer.inbox):\n` +
+    ? `Inbox — ${drafts.length} waiting for your final word (open PR Panel: prefix+i, pr-panel, or herdr plugin action invoke pr-reviewer.panel):\n` +
       drafts.map((d) => `   • ${d.repo}#${d.number}  ${d.verdict.toUpperCase()}  ${d.title}`).join("\n")
     : "Inbox — empty";
   if (text !== lastInbox) console.log(`\n${text}\n`);

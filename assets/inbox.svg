@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="920" height="360" viewBox="0 0 920 360" role="img" aria-label="The PR Review Inbox: a list of AI reviews waiting for your final word, with a preview of the selected one">
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="360" viewBox="0 0 920 360" role="img" aria-label="PR Panel, Inbox tab: a list of AI reviews waiting for your final word, with a preview of the selected one">
   <style>
     text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #c9d1d9; white-space: pre; }
     .b { font-weight: 700; fill: #f0f6fc; }
@@ -6,6 +6,7 @@
     .yel { fill: #e3b341; }
     .grn { fill: #3fb950; }
     .cya { fill: #39c5cf; }
+    .b2 { font-weight: 700; }
     .blu { fill: #58a6ff; font-weight: 700; }
     .badge { font-weight: 700; fill: #0d1117; }
     .rule { stroke: #30363d; stroke-width: 1; }
@@ -18,12 +19,12 @@
   <circle cx="22" cy="18" r="6" fill="#ff5f57"/>
   <circle cx="42" cy="18" r="6" fill="#febc2e"/>
   <circle cx="62" cy="18" r="6" fill="#28c840"/>
-  <text x="460" y="22" text-anchor="middle" class="dim">pr-inbox</text>
+  <text x="460" y="22" text-anchor="middle" class="dim">pr-panel</text>
   <line x1="0" y1="35" x2="920" y2="35" class="rule"/>
 
   <!-- header -->
-  <text x="20" y="62"><tspan class="b">PR Review Inbox</tspan> <tspan class="yel">3 waiting</tspan></text>
-  <text x="900" y="62" text-anchor="end"><tspan class="grn">● watching</tspan><tspan class="dim">  ·  </tspan><tspan class="cya">⟳ reviewing web-app#418</tspan></text>
+  <rect x="16" y="48" width="78" height="20" rx="3" fill="#f0f6fc"/><text x="55" y="62" text-anchor="middle" class="badge">PR Panel</text><rect x="106" y="48" width="74" height="20" rx="3" fill="#39c5cf"/><text x="143" y="62" text-anchor="middle" class="badge">Inbox 3</text><text x="192" y="62"><tspan class="b">Repos</tspan> <tspan class="dim">2</tspan><tspan class="dim">  │  </tspan><tspan class="b">Settings</tspan><tspan class="dim">  │  </tspan><tspan class="b">History</tspan></text>
+  <text x="900" y="62" text-anchor="end"><tspan class="grn">● watching</tspan><tspan class="dim">  ·  </tspan><tspan class="cya">reviewing web-app#418</tspan></text>
   <line x1="20" y1="76" x2="900" y2="76" class="rule"/>
 
   <!-- rows -->
@@ -47,7 +48,7 @@
   <line x1="20" y1="170" x2="900" y2="170" class="rule"/>
 
   <!-- preview -->
-  <text x="20" y="194"><tspan class="b">acme/api-server#212</tspan>  <tspan class="dim">by a-teammate</tspan>   <tspan class="grn">✓ up to date</tspan></text>
+  <text x="20" y="194"><tspan class="b">acme/api-server#212</tspan>  <tspan class="dim">by a-teammate</tspan>   <tspan class="grn">up to date</tspan></text>
   <text x="20" y="220" class="blu">What this PR does</text>
   <text x="20" y="240">Logging out clears the session cookie, but the refresh token stays valid for 30 days.</text>
   <text x="20" y="266"><tspan class="b">Blocking:</tspan> <tspan class="cya">revokeRefreshToken()</tspan> is never called from <tspan class="cya">logout()</tspan>, so a stolen token</text>
@@ -55,5 +56,5 @@
   <text x="20" y="306"><tspan class="b">Non-blocking:</tspan> add a test that a revoked token can't be refreshed.</text>
 
   <line x1="20" y1="322" x2="900" y2="322" class="rule"/>
-  <text x="20" y="344" class="dim">↑↓ move  ⏎ open  p post  d discard  o browser  n review a URL  h history  q quit</text>
+  <text x="20" y="344"><tspan class="cya b2">↑↓</tspan> <tspan class="dim">move</tspan>   <tspan class="cya b2">⏎</tspan> <tspan class="dim">open</tspan>   <tspan class="cya b2">p</tspan> <tspan class="dim">post</tspan>   <tspan class="cya b2">d</tspan> <tspan class="dim">discard</tspan>   <tspan class="cya b2">o</tspan> <tspan class="dim">browser</tspan>   <tspan class="cya b2">n</tspan> <tspan class="dim">review a link</tspan>   <tspan class="cya b2">tab</tspan> <tspan class="dim">next tab</tspan>   <tspan class="cya b2">?</tspan> <tspan class="dim">help</tspan>   <tspan class="cya b2">q</tspan> <tspan class="dim">quit</tspan></text>
 </svg>

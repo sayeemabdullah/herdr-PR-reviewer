@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **PR Panel.** The inbox is now PR Panel, with four tabs: Inbox, Repos, Settings and History. Move with
+  Tab or `i` `r` `s` `h`; the bottom line shows the keys you can use, `?` shows them all.
+- **Repos tab.** Add a repo by picking from your GitHub repos (type to search), or type owner/repo or paste
+  a link, then choose every PR or only when asked. Remove with `x`. Final word and model per repo.
+- **Settings tab.** Model, effort, final word, polling and more, saved straight to `config.json`; a change
+  that would break the config isn't saved.
+- **`pr-inbox` is now `pr-panel`.** The command is swapped for you when herdr starts. The action is
+  `pr-reviewer.panel`; `pr-reviewer.inbox` still works.
+
 ## 0.2.0
 
 - **Reviews read the code, not just the diff.** The PR is checked out (read-only) and the AI can open

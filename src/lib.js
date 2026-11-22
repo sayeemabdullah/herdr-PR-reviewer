@@ -21,28 +21,68 @@ const WORKTREES_DIR = path.join(STATE_DIR, "worktrees"); // one checkout per run
 for (const d of [CONFIG_DIR, STATE_DIR, DRAFTS_DIR, LOCKS_DIR]) fs.mkdirSync(d, { recursive: true });
 
 /**
- * A `pr-inbox` launcher at a stable path. GitHub installs move to a new folder on every update, so the
+ * A `pr-panel` launcher at a stable path. GitHub installs move to a new folder on every update, so the
  * launcher reads the current plugin folder from STATE_DIR/root, which every plugin command refreshes.
  */
-export const LAUNCHER = path.join(STATE_DIR, "bin", "pr-inbox");
+export const LAUNCHER = path.join(STATE_DIR, "bin", "pr-panel");
 export function writeLauncher() {
   try {
     fs.writeFileSync(path.join(STATE_DIR, "root"), ROOT);
     fs.mkdirSync(path.dirname(LAUNCHER), { recursive: true });
     const q = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
-    fs.writeFileSync(LAUNCHER, `#!/bin/sh
-# Opens the PR Reviewer inbox in this terminal. Written by the pr-reviewer herdr plugin.
+    const script = `#!/bin/sh
+# Opens PR Panel in this terminal. Written by the pr-reviewer herdr plugin.
 STATE=${q(STATE_DIR)}
 ROOT="$(cat "$STATE/root" 2>/dev/null)"
-if [ ! -f "$ROOT/src/inbox.js" ]; then
-  echo "pr-inbox: can't find the pr-reviewer plugin. Start herdr once, or reinstall the plugin." >&2
+if [ ! -f "$ROOT/src/panel.js" ]; then
+  echo "pr-panel: can't find the pr-reviewer plugin. Start herdr once, or reinstall the plugin." >&2
   exit 1
 fi
 export HERDR_PLUGIN_ID=${q(PLUGIN_ID)} HERDR_PLUGIN_CONFIG_DIR=${q(CONFIG_DIR)} HERDR_PLUGIN_STATE_DIR="$STATE"
-exec node "$ROOT/src/inbox.js" "$@"
-`);
+exec node "$ROOT/src/panel.js" "$@"
+`;
+    fs.writeFileSync(LAUNCHER, script);
     fs.chmodSync(LAUNCHER, 0o755);
+    // The old name: an existing `pr-inbox` link keeps working until installCli() replaces it.
+    const old = path.join(path.dirname(LAUNCHER), "pr-inbox");
+    if (fs.existsSync(old)) fs.writeFileSync(old, script);
   } catch {}
+}
+
+const USER_BIN = path.join(os.homedir(), ".local", "bin");
+
+/** Is ~/.local/bin/<name> a link to one of this plugin's launchers? */
+function ourLink(name) {
+  try {
+    return fs.readlinkSync(path.join(USER_BIN, name)).startsWith(path.dirname(LAUNCHER));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Put `pr-panel` in ~/.local/bin, linked to the launcher, and remove an old `pr-inbox` link of ours.
+ * With onlyIfOld, does nothing unless the old command is installed (used at startup to upgrade).
+ * Returns { ok, message }.
+ */
+export function installCli({ onlyIfOld = false } = {}) {
+  const hadOld = ourLink("pr-inbox");
+  if (onlyIfOld && !hadOld) return { ok: true, message: "" };
+  writeLauncher();
+  fs.mkdirSync(USER_BIN, { recursive: true });
+  const target = path.join(USER_BIN, "pr-panel");
+  let stat = null;
+  try { stat = fs.lstatSync(target); } catch {}
+  if (stat && !stat.isSymbolicLink()) return { ok: false, message: `${target} already exists and isn't a link, so I left it alone.` };
+  fs.rmSync(target, { force: true });
+  fs.symlinkSync(LAUNCHER, target);
+  if (hadOld) fs.rmSync(path.join(USER_BIN, "pr-inbox"), { force: true });
+  const onPath = (process.env.PATH ?? "").split(path.delimiter).includes(USER_BIN);
+  const renamed = hadOld ? " (pr-inbox is now called pr-panel.)" : "";
+  return {
+    ok: true,
+    message: (onPath ? "Type pr-panel in any terminal to open PR Panel." : `Installed ${target}. Add ${USER_BIN} to your PATH to type just pr-panel.`) + renamed,
+  };
 }
 
 // ---------- process helpers ----------
@@ -107,7 +147,7 @@ export function isAlive(pid) {
 
 // ---------- config ----------
 
-const DEFAULTS = {
+export const DEFAULTS = {
   repos: [], // per-repo settings, e.g. { "repo": "o/r", "review": "all", "finalWord": false }
   review: "requested", // "requested" = only PRs you're added to as reviewer; "all" = every open PR (set per repo)
   onlyListedRepos: false, // false = any repo where you're a requested reviewer; true = only repos in `repos`
@@ -722,7 +762,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     if (settings.finalWord) {
       saveDraft(draft);
       markReviewed(key, { sha: pr.headRefOid, status: "drafted", attempts: 0, error: null, lastReview });
-      notify("PR review needs your final word", `${repo}#${number}: ${draft.verdict} — run pr-inbox`, "request",
+      notify("PR review needs your final word", `${repo}#${number}: ${draft.verdict} — open PR Panel (prefix+i or pr-panel)`, "request",
         { desktop: settings.desktopNotifications });
       return { status: "drafted", draft };
     }

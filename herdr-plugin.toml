@@ -15,14 +15,20 @@ title = "PR Reviewer: start / focus watcher"
 command = ["node", "src/open-pane.js", "watcher"]
 
 [[actions]]
-id = "inbox"
-title = "PR Reviewer: open review inbox"
-command = ["node", "src/open-pane.js", "inbox"]
+id = "panel"
+title = "PR Reviewer: open PR Panel (inbox, repos, settings)"
+command = ["node", "src/open-pane.js", "panel"]
 
-# Adds a `pr-inbox` command (~/.local/bin) that opens the inbox in any terminal, and survives updates.
+# The old name of "panel", kept so existing shortcuts (pr-reviewer.inbox) keep working.
+[[actions]]
+id = "inbox"
+title = "PR Reviewer: open PR Panel (old shortcut name)"
+command = ["node", "src/open-pane.js", "panel"]
+
+# Adds a `pr-panel` command (~/.local/bin) that opens the panel in any terminal, and survives updates.
 [[actions]]
 id = "install-cli"
-title = "PR Reviewer: install the pr-inbox command"
+title = "PR Reviewer: install the pr-panel command"
 command = ["node", "src/install-cli.js"]
 
 # Long-running poll loop; lives in its own tab so you can see what it's doing.
@@ -32,9 +38,9 @@ title = "PR watcher"
 placement = "tab"
 command = ["node", "src/watcher.js"]
 
-# Interactive inbox: approve / edit / discard AI drafts before they're posted.
+# PR Panel: the inbox (approve / edit / discard AI reviews), repos, settings and history.
 [[panes]]
-id = "inbox"
-title = "PR review inbox"
+id = "panel"
+title = "PR Panel"
 placement = "overlay"
-command = ["node", "src/inbox.js"]
+command = ["node", "src/panel.js"]

@@ -5,15 +5,15 @@
 # PR Reviewer for herdr
 
 **Claude reviews the pull requests you're asked to review.**<br>
-**You read each review in an inbox and press _post_, or let it post on its own.**
+**You read each review in PR Panel and press _post_, or let it post on its own.**
 
 <p><a href="https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/sayeemabdullah/herdr-PR-reviewer/ci.yml?branch=master&style=flat-square&label=CI"></a> <a href="https://herdr.dev/plugins/"><img alt="herdr plugin, 0.8 or newer" src="https://img.shields.io/badge/herdr%20plugin-%E2%89%A5%200.8-222?style=flat-square"></a> <a href="https://nodejs.org"><img alt="Node 22 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022-339933?style=flat-square&logo=node.js&logoColor=white"></a> <a href="https://claude.com/claude-code"><img alt="Claude Code, restricted mode" src="https://img.shields.io/badge/Claude%20Code-restricted-D97757?style=flat-square"></a> <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-0969da?style=flat-square"></a></p>
 
-[Quick start](#quick-start) · [How it works](#how-it-works) · [The inbox](#inbox) · [Settings](#settings) · [Safety](#safety) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [How it works](#how-it-works) · [PR Panel](#panel) · [Settings](#settings) · [Safety](#safety) · [Contributing](CONTRIBUTING.md)
 
 <br>
 
-<img src="assets/inbox.svg" alt="The PR Review Inbox" width="860">
+<img src="assets/inbox.svg" alt="PR Panel, Inbox tab" width="860">
 
 </div>
 
@@ -58,7 +58,7 @@ It runs with no shell, none of your MCP servers and none of your settings, and c
 <td valign="top">
 
 ### Fits herdr
-A watcher tab, an inbox pane, shortcuts and notifications. A `pr-inbox` command works in any terminal.
+A watcher tab, a PR Panel pane, shortcuts and notifications. A `pr-panel` command works in any terminal.
 
 </td>
 </tr>
@@ -75,10 +75,12 @@ A watcher tab, an inbox pane, shortcuts and notifications. A `pr-inbox` command 
 
 ```sh
 herdr plugin install sayeemabdullah/herdr-PR-reviewer
-herdr plugin action invoke pr-reviewer.install-cli   # optional: adds the `pr-inbox` command
+herdr plugin action invoke pr-reviewer.install-cli   # optional: adds the `pr-panel` command
 ```
 
 **2. Pick your repos.** This is optional: with no list, it reviews any PR where you're a requested reviewer.
+Open [PR Panel](#panel) and go to the **Repos** tab (<kbd>r</kbd>): press <kbd>a</kbd> and pick from your
+GitHub repos. The model and final word are in the **Settings** tab (<kbd>s</kbd>). Or edit the file yourself:
 
 ```sh
 $EDITOR "$(herdr plugin config-dir pr-reviewer)/config.json"
@@ -164,15 +166,30 @@ It replies with a verdict (**approve**, **request changes** or **comment**), a s
 A setting on a repo wins over the one at the top.
 
 <a id="inbox"></a>
+<a id="panel"></a>
 
-## The inbox
+## PR Panel
 
-Reviews wait here for your final word. Open it with any of:
+Everything in one place, in four tabs. Move between them with <kbd>Tab</kbd>, or jump with
+<kbd>i</kbd> <kbd>r</kbd> <kbd>s</kbd> <kbd>h</kbd>. The bottom line always shows the keys you can press
+right now, and <kbd>?</kbd> shows all of them.
+
+| Tab | What it's for |
+|---|---|
+| **Inbox** | AI reviews waiting for your final word: read, change, post or discard them |
+| **Repos** | which repos are watched. Add one by picking from your GitHub repos, remove one with <kbd>x</kbd> |
+| **Settings** | model, effort, final word, how often to check, and the rest |
+| **History** | what was posted, discarded or failed, and why |
+
+Open it with any of:
 
 | Where | How |
 |---|---|
-| any terminal, incl. the Herdr desktop app | `pr-inbox` (set up once with `herdr plugin action invoke pr-reviewer.install-cli`) |
-| inside herdr | `herdr plugin action invoke pr-reviewer.inbox`, or <kbd>Ctrl</kbd>+<kbd>b</kbd> <kbd>i</kbd> with the [shortcut](#shortcuts) |
+| any terminal, incl. the Herdr desktop app | `pr-panel` (set up once with `herdr plugin action invoke pr-reviewer.install-cli`) |
+| inside herdr | <kbd>Ctrl</kbd>+<kbd>b</kbd> <kbd>i</kbd> with the [shortcut](#shortcuts), or `herdr plugin action invoke pr-reviewer.panel` |
+
+> Upgrading? The `pr-inbox` command is now `pr-panel`. It's swapped for you the next time herdr starts,
+> and the `pr-reviewer.inbox` shortcut keeps working.
 
 You don't have to open it to know what's going on: the watcher shows up in herdr's agent list as **PR Reviewer**, with its status:
 
@@ -182,12 +199,14 @@ You don't have to open it to know what's going on: the watcher shows up in herdr
 | needs you, "3 waiting" | reviews are waiting for your final word |
 | idle, "inbox empty" | nothing to do |
 
+### Inbox
+
 The top line shows whether the watcher is running and which PR it's reviewing right now. The list updates by itself. Each review is checked against GitHub:
 
 | Shows | Means |
 |---|---|
 | up to date (green) | the review matches the PR as it is now |
-| new commits since this review (yellow) | the author pushed after the review. You can still post, and you'll be warned first |
+| new commits since this review (yellow, and `!` in the list) | the author pushed after the review. You can still post, and you'll be warned first |
 | PR is merged / closed (yellow) | the PR is finished. You'll probably want to discard the review |
 
 <details>
@@ -197,11 +216,10 @@ The top line shows whether the watcher is running and which PR it's reviewing ri
 |---|---|
 | <kbd>↑</kbd> <kbd>↓</kbd> | move |
 | <kbd>Enter</kbd> or <kbd>1</kbd>–<kbd>9</kbd> | open a review |
-| <kbd>p</kbd> | post the selected review (asks y/N first) |
+| <kbd>p</kbd> | post the selected review (asks first) |
 | <kbd>d</kbd> | discard it. Nothing goes to GitHub |
 | <kbd>o</kbd> | open the PR in your browser |
 | <kbd>n</kbd> | review any PR now: paste its link. It runs in the background |
-| <kbd>h</kbd> | history: what was posted, discarded or failed, and why |
 | <kbd>q</kbd> | quit |
 
 </details>
@@ -212,18 +230,56 @@ The top line shows whether the watcher is running and which PR it's reviewing ri
 | Key | Does |
 |---|---|
 | <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd> | scroll (<kbd>g</kbd> top, <kbd>G</kbd> bottom) |
-| <kbd>1</kbd>–<kbd>9</kbd> | turn a line comment **off or on**. Off comments are struck through and not posted |
+| <kbd>1</kbd>–<kbd>9</kbd> | turn a comment **off or on**. Off comments are struck through and not posted |
 | <kbd>a</kbd> / <kbd>r</kbd> / <kbd>c</kbd> | set the verdict: approve / request changes / comment |
 | <kbd>e</kbd> | edit the summary in your editor, as Markdown |
 | <kbd>E</kbd> | edit everything (verdict, summary, comments) as JSON |
-| <kbd>p</kbd> | post. It asks first: *"Post COMMENT with 3 inline comment(s) to …#415? [y/N]"* |
+| <kbd>p</kbd> | post. It asks first: *"Post COMMENT with 3 comment(s) to …#415?"* |
 | <kbd>d</kbd> | discard |
 | <kbd>o</kbd> | open the PR in your browser |
-| <kbd>←</kbd> / <kbd>Esc</kbd> | back to the list |
+| <kbd>Esc</kbd> | back to the list |
 
 <kbd>e</kbd> and <kbd>E</kbd> use `$EDITOR`. If that isn't set, they use VS Code when it's installed, otherwise `vi`.
 
 </details>
+
+<a id="repos-tab"></a>
+
+### Repos
+
+Press <kbd>a</kbd> to add a repo. You get a list of your GitHub repos, most recently updated first: type a few
+letters to narrow it down and press <kbd>Enter</kbd>. A repo that isn't in the list (someone else's, say)
+can be typed as `owner/repo` or pasted as a link. Then choose **every PR** or **only when I'm asked**.
+
+| Key | Does |
+|---|---|
+| <kbd>a</kbd> | add a repo |
+| <kbd>x</kbd> | remove the selected repo (asks first) |
+| <kbd>Enter</kbd> | switch between every PR and only when you're asked |
+| <kbd>f</kbd> | final word for this repo only: you approve / the AI posts / back to the global setting |
+| <kbd>m</kbd> | model for this repo only: each press picks the next one, then back to the global model |
+
+Under **Other repos**, choose whether PRs you're asked to review in repos that aren't listed are reviewed too.
+
+<a id="settings-screen"></a>
+
+### Settings
+
+Every change is saved to `config.json` straight away, and the watcher uses it from its next check.
+A change that would break the config isn't saved, and the panel tells you why.
+
+| Section | What you can change |
+|---|---|
+| Reviews | final word, **model** (opus, fable, sonnet, haiku, or type any model name), effort, read the whole repo, AI may approve, re-review new commits, skip draft PRs |
+| Watcher | how often to check, reviews at once, desktop notifications |
+
+| Key | Does |
+|---|---|
+| <kbd>↑</kbd> <kbd>↓</kbd> | move |
+| <kbd>Enter</kbd> | change: on/off, next option, or type a number |
+| <kbd>→</kbd> / <kbd>←</kbd> | next / previous option (model, effort) |
+| <kbd>t</kbd> | type a model name, e.g. a full one like `claude-opus-5-5` |
+| <kbd>E</kbd> | open `config.json` in your editor, for everything else (`ignorePaths`, `instructions`, …) |
 
 ### Shortcuts
 
@@ -233,8 +289,8 @@ Add these to `~/.config/herdr/config.toml`, then run `herdr server reload-config
 [[keys.command]]
 key = "prefix+i"
 type = "plugin_action"
-command = "pr-reviewer.inbox"
-description = "PR review inbox"
+command = "pr-reviewer.panel"
+description = "PR Panel"
 
 [[keys.command]]
 key = "prefix+shift+i"
@@ -247,7 +303,7 @@ description = "PR review watcher"
 
 ## Settings
 
-All of these go in `config.json`. Any of them can also go on one repo, like `{ "repo": "…", "finalWord": false }`.
+All of these go in `config.json`, and the common ones can be changed in [PR Panel](#panel), in the Repos and Settings tabs. Any of them can also go on one repo, like `{ "repo": "…", "finalWord": false }`.
 
 <details open>
 <summary><b>What to review</b></summary>
