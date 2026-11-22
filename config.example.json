@@ -7,16 +7,14 @@
   "allowApprove": true,
   "rereviewOnPush": true,
   "skipDrafts": true,
+  "readCode": true,
   "ignoreRepos": [],
   "ignoreAuthors": ["dependabot[bot]", "renovate[bot]"],
   "onlyListedRepos": false,
   "pollSeconds": 180,
+  "maxParallel": 2,
   "maxDiffChars": 150000,
   "instructions": "",
   "desktopNotifications": true,
-  "autoStartWatcher": true,
-  "agent": {
-    "command": ["claude", "-p", "--tools", "", "--output-format", "text"],
-    "timeoutSeconds": 600
-  }
+  "autoStartWatcher": true
 }
