@@ -145,6 +145,28 @@ export function listDrafts() {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+/** Keys of PRs being reviewed at this moment (by the watcher or a manual review). */
+export function listActiveReviews() {
+  return fs.readdirSync(LOCKS_DIR).flatMap((f) => {
+    try {
+      const p = path.join(LOCKS_DIR, f);
+      if (Date.now() - fs.statSync(p).mtimeMs > 60 * 60 * 1000) return []; // stale
+      return [fs.readFileSync(p, "utf8").trim() || f.replace(/\.json$/, "")];
+    } catch {
+      return [];
+    }
+  });
+}
+
+/** Is the background watcher process alive? */
+export function watcherRunning() {
+  try {
+    return isAlive(JSON.parse(fs.readFileSync(WATCHER_FILE, "utf8")).pid);
+  } catch {
+    return false;
+  }
+}
+
 function withLock(key, fn) {
   const f = path.join(LOCKS_DIR, keyFile(key));
   try {
@@ -153,6 +175,7 @@ function withLock(key, fn) {
   let fd;
   try {
     fd = fs.openSync(f, "wx");
+    fs.writeSync(fd, key); // so the inbox can show what's being reviewed right now
   } catch {
     return { skipped: "already being reviewed" };
   }
@@ -269,7 +292,9 @@ export function postReview(draft, settings) {
     commit_id: draft.headSha,
     event,
     body,
-    comments: draft.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })),
+    comments: draft.comments
+      .filter((c) => !c.excluded) // turned off in the inbox
+      .map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })),
   };
   const endpoint = ["api", `repos/${draft.repo}/pulls/${draft.number}/reviews`, "--method", "POST", "--input", "-"];
   const r = run("gh", endpoint, { input: JSON.stringify(payload), allowFail: true });
