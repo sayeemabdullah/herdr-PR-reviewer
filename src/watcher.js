@@ -2,8 +2,10 @@
 import fs from "node:fs";
 import {
   CONFIG_FILE, HERDR, WATCHER_FILE, getReviewed, headSha, listDrafts, listPRsToReview, loadConfig,
-  markReviewed, prKey, reviewPR, run, settingsFor, sleep,
+  markReviewed, prKey, reviewPR, run, settingsFor, sleep, writeLauncher,
 } from "./lib.js";
+
+writeLauncher();
 
 const MAX_ATTEMPTS = 3;
 const PANE = process.env.HERDR_PANE_ID;
@@ -55,7 +57,9 @@ while (true) {
   } catch (e) {
     log(`GitHub search failed: ${e.message}`);
   }
+  // Work out what needs a review this round.
   const reviewed = getReviewed();
+  const jobs = [];
   for (const pr of prs) {
     const s = settingsFor(cfg, pr.repo);
     const key = prKey(pr.repo, pr.number);
@@ -70,24 +74,36 @@ while (true) {
       continue;
     }
     const prev = reviewed[key];
-    if (prev) {
-      const sameSha = prev.sha === sha;
-      if (sameSha && (prev.status !== "failed" || (prev.attempts ?? 0) >= MAX_ATTEMPTS)) continue;
-      if (!sameSha && !s.rereviewOnPush) continue;
+    if (prev?.status === "failed") {
+      // `sha` keeps the last *successful* review (for follow-ups); failures track failedSha.
+      if ((prev.failedSha ?? prev.sha) === sha && (prev.attempts ?? 0) >= MAX_ATTEMPTS) continue;
+    } else if (prev) {
+      if (prev.sha === sha) continue;
+      if (!s.rereviewOnPush) continue;
     }
+    jobs.push({ pr, key, sha, prev });
+  }
 
-    log(`reviewing ${key} "${pr.title}"`);
+  // Run them, up to maxParallel at a time, so one slow review doesn't hold up the rest.
+  const runJob = async ({ pr, key, sha, prev }) => {
+    const tag = (...a) => log(`[${key}]`, ...a);
+    tag(`reviewing "${pr.title}"`);
     try {
-      const r = reviewPR(cfg, pr.repo, pr.number, { log });
-      if (r.skipped) log(`  skipped: ${r.skipped}`);
-      else log(`  ${r.status}: ${r.event ?? r.draft.verdict} (${r.draft.comments.length} inline comments)`);
+      const r = await reviewPR(cfg, pr.repo, pr.number, { log: (m) => tag(String(m).trim()) });
+      if (r.skipped) tag(`skipped: ${r.skipped}`);
+      else tag(`${r.status}: ${r.event ?? r.draft.verdict} (${r.draft.comments.length} inline comments)`);
     } catch (e) {
-      const attempts = prev?.sha === sha ? (prev.attempts ?? 0) + 1 : 1;
-      markReviewed(key, { sha, status: "failed", attempts, error: e.message });
-      log(`  FAILED (attempt ${attempts}/${MAX_ATTEMPTS}): ${e.message}`);
+      const attempts = prev?.status === "failed" && (prev.failedSha ?? prev.sha) === sha ? (prev.attempts ?? 0) + 1 : 1;
+      markReviewed(key, { status: "failed", failedSha: sha, attempts, error: e.message });
+      tag(`FAILED (attempt ${attempts}/${MAX_ATTEMPTS}): ${e.message}`);
     }
     showInbox();
-  }
+  };
+  const queue = [...jobs];
+  const workers = Array.from({ length: Math.max(1, Math.min(cfg.maxParallel ?? 2, queue.length)) }, async () => {
+    while (queue.length) await runJob(queue.shift());
+  });
+  await Promise.all(workers);
   showInbox();
   log(`checked ${prs.length} PR(s); next check in ${cfg.pollSeconds}s`);
   await sleep(cfg.pollSeconds * 1000);

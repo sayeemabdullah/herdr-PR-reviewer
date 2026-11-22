@@ -1,6 +1,6 @@
 id = "pr-reviewer"
 name = "PR Reviewer"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.8.0"
 description = "Watch GitHub repos and have Claude (or another AI CLI) review incoming PRs, with an optional human final word"
 platforms = ["macos", "linux"]
@@ -18,6 +18,12 @@ command = ["node", "src/open-pane.js", "watcher"]
 id = "inbox"
 title = "PR Reviewer: open review inbox"
 command = ["node", "src/open-pane.js", "inbox"]
+
+# Adds a `pr-inbox` command (~/.local/bin) that opens the inbox in any terminal, and survives updates.
+[[actions]]
+id = "install-cli"
+title = "PR Reviewer: install the pr-inbox command"
+command = ["node", "src/install-cli.js"]
 
 # Long-running poll loop; lives in its own tab so you can see what it's doing.
 [[panes]]
