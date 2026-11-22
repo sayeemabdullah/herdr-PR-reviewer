@@ -479,6 +479,24 @@ export function commentableLines(diff) {
   return map;
 }
 
+/**
+ * The diff with each line's number in the new file in front of it and a tab
+ * (blank for removed lines), so the AI copies line numbers instead of
+ * counting them, which it gets wrong deep into a long new file.
+ */
+export function numberDiff(diff) {
+  let line = 0, inHunk = false;
+  return diff.split("\n").map((l) => {
+    if (l.startsWith("diff --git ")) { inHunk = false; return l; }
+    const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l);
+    if (h) { line = Number(h[1]); inHunk = true; return l; }
+    if (!inHunk) return l;
+    if (l.startsWith("+") || l.startsWith(" ")) return `${line++}\t${l}`;
+    if (l.startsWith("-")) return `\t${l}`;
+    return l;
+  }).join("\n");
+}
+
 const EVENTS = { approve: "APPROVE", request_changes: "REQUEST_CHANGES", comment: "COMMENT" };
 
 /** "src/a.js: 1-4, 10-12" per file, for telling the AI exactly which lines can take a comment. */
@@ -589,7 +607,7 @@ const cut = (s, n) => (s.length > n ? s.slice(0, n) + "\n... [truncated]" : s);
 export function buildPrompt(pr, settings, ctx) {
   const { diff, skipped = [], codeAccess = false, previous = null, feedback = "", commentable = "" } = ctx;
   const truncated = diff.length > settings.maxDiffChars;
-  const shown = cut(diff, settings.maxDiffChars);
+  const shown = numberDiff(cut(diff, settings.maxDiffChars));
   const prev = previous?.review;
   // Files whose changes didn't fit in the shown diff (the last one shown may be partial too).
   const filesIn = (d) => [...d.matchAll(/^diff --git a\/.+? b\/(.+)$/gm)].map((m) => m[1]);
@@ -636,6 +654,8 @@ Inline comments: put each concrete finding in "comments", on the changed line it
 summary. Keep the summary to an overview plus anything that isn't about one place. "line" must be one of
 the COMMENTABLE LINES listed below (lines of the new file that are inside the diff). If a finding is about
 a changed file but no commentable line fits, use "line": null for a comment on the whole file.
+In the diffs below, each line starts with its line number in the new file and a tab (blank for removed
+lines). Use that number for "line"; never count lines yourself.
 When a small fix is certain and replaces exactly the commented line, include a GitHub suggestion block in
 the comment body so the author can apply it with one click:
 \`\`\`suggestion
@@ -662,7 +682,7 @@ ${pr.body || "(none)"}
 ${feedback ? `\nExisting review comments:\n${feedback}\n` : ""}${skipped.length ? `\nLeft out of the diff (lockfiles/generated, per config): ${skipped.join(", ")}\n` : ""}${previous?.sinceDiff ? `
 Changes since your last review (${previous.sha.slice(0, 7)}..${pr.headRefOid.slice(0, 7)}):
 \`\`\`diff
-${cut(previous.sinceDiff, Math.floor(settings.maxDiffChars / 2))}
+${numberDiff(cut(previous.sinceDiff, Math.floor(settings.maxDiffChars / 2)))}
 \`\`\`
 ` : ""}
 Full diff of the PR:
