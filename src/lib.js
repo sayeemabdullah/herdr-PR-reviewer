@@ -441,6 +441,44 @@ export function commentableLines(diff) {
 
 const EVENTS = { approve: "APPROVE", request_changes: "REQUEST_CHANGES", comment: "COMMENT" };
 
+/** "src/a.js: 1-4, 10-12" per file, for telling the AI exactly which lines can take a comment. */
+export function commentableRanges(valid, { skip = [], maxChars = 6000 } = {}) {
+  const lines = [];
+  for (const [file, set] of valid) {
+    if (skip.includes(file) || !set.size) continue;
+    const nums = [...set].sort((a, b) => a - b);
+    const ranges = [];
+    let start = nums[0], prev = nums[0];
+    for (const n of nums.slice(1).concat(Infinity)) {
+      if (n === prev + 1) { prev = n; continue; }
+      ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+      start = prev = n;
+    }
+    lines.push(`${file}: ${ranges.join(", ")}`);
+  }
+  const text = lines.join("\n");
+  return text.length > maxChars ? text.slice(0, maxChars) + "\n… (more files; use the diff)" : text;
+}
+
+/**
+ * Decide where each AI comment goes:
+ * - on a commentable line            → line comment
+ * - in a changed file, no valid line → file-level comment (line: null), noting the line it meant
+ * - in a file the PR didn't change   → folded into the summary (GitHub can't attach it anywhere)
+ */
+export function placeComments(comments, valid) {
+  const placed = [], folded = [];
+  for (const c of comments) {
+    const body = String(c.body);
+    const line = c.line === null || c.line === undefined || c.line === "" ? null : Number(c.line);
+    const lines = valid.get(c.path);
+    if (lines && line !== null && lines.has(line)) placed.push({ path: c.path, line, body });
+    else if (lines) placed.push({ path: c.path, line: null, body: line ? `**Line ${line}:** ${body}` : body });
+    else folded.push({ path: c.path, line, body });
+  }
+  return { placed, folded };
+}
+
 export function postReview(draft, settings) {
   let event = EVENTS[draft.verdict] ?? "COMMENT";
   let body = draft.summary.trim();
@@ -449,23 +487,40 @@ export function postReview(draft, settings) {
     event = "COMMENT";
   }
   body += settings.footer ?? "";
+  const on = draft.comments.filter((c) => !c.excluded); // turned off in the inbox
+  const lineComments = on.filter((c) => c.line);
+  const fileComments = on.filter((c) => !c.line);
   const payload = {
     commit_id: draft.headSha,
     event,
     body,
-    comments: draft.comments
-      .filter((c) => !c.excluded) // turned off in the inbox
-      .map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })),
+    comments: lineComments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })),
   };
   const endpoint = ["api", `repos/${draft.repo}/pulls/${draft.number}/reviews`, "--method", "POST", "--input", "-"];
   const r = run("gh", endpoint, { input: JSON.stringify(payload), allowFail: true });
-  if (r.ok) return event;
-  if (payload.comments.length === 0) throw new Error(`posting review failed: ${r.stderr.trim()}`);
-  // Inline comments rejected (e.g. line moved) → fold them into the body and retry once.
-  payload.body += "\n\n" + foldComments(payload.comments);
-  payload.comments = [];
-  run("gh", endpoint, { input: JSON.stringify(payload) });
+  if (!r.ok) {
+    if (payload.comments.length === 0) throw new Error(`posting review failed: ${r.stderr.trim()}`);
+    // Inline comments rejected (e.g. line moved) → fold them into the body and retry once.
+    payload.body += "\n\n" + foldComments(payload.comments);
+    payload.comments = [];
+    run("gh", endpoint, { input: JSON.stringify(payload) });
+  }
+  postFileComments(draft, fileComments);
   return event;
+}
+
+/** File-level review comments (GitHub's "comment on file"). Any that fail go out as one PR comment. */
+function postFileComments(draft, comments) {
+  const failed = [];
+  for (const c of comments) {
+    const r = run("gh", ["api", `repos/${draft.repo}/pulls/${draft.number}/comments`, "--method", "POST", "--input", "-"],
+      { input: JSON.stringify({ body: c.body, commit_id: draft.headSha, path: c.path, subject_type: "file" }), allowFail: true });
+    if (!r.ok) failed.push(c);
+  }
+  if (failed.length) {
+    run("gh", ["api", `repos/${draft.repo}/issues/${draft.number}/comments`, "--method", "POST", "--input", "-"],
+      { input: JSON.stringify({ body: foldComments(failed) }), allowFail: true });
+  }
 }
 
 const foldComments = (cs) =>
@@ -492,7 +547,7 @@ const cut = (s, n) => (s.length > n ? s.slice(0, n) + "\n... [truncated]" : s);
  * Exported for tests.
  */
 export function buildPrompt(pr, settings, ctx) {
-  const { diff, skipped = [], codeAccess = false, previous = null, feedback = "" } = ctx;
+  const { diff, skipped = [], codeAccess = false, previous = null, feedback = "", commentable = "" } = ctx;
   const truncated = diff.length > settings.maxDiffChars;
   const shown = cut(diff, settings.maxDiffChars);
   const prev = previous?.review;
@@ -537,16 +592,23 @@ and important; never post the same comment twice.
 ` : ""}${feedback ? `
 Others have already commented (inside <pr>). Don't repeat their points; add to them only if you have something new.
 ` : ""}
-Inline comments: when a small fix is certain and replaces exactly the commented line, include a GitHub
-suggestion block in the comment body so the author can apply it with one click:
+Inline comments: put each concrete finding in "comments", on the changed line it's about, not only in the
+summary. Keep the summary to an overview plus anything that isn't about one place. "line" must be one of
+the COMMENTABLE LINES listed below (lines of the new file that are inside the diff). If a finding is about
+a changed file but no commentable line fits, use "line": null for a comment on the whole file.
+When a small fix is certain and replaces exactly the commented line, include a GitHub suggestion block in
+the comment body so the author can apply it with one click:
 \`\`\`suggestion
 <the corrected line>
 \`\`\`
-
+${commentable ? `
+COMMENTABLE LINES (file: line ranges):
+${commentable}
+` : ""}
 Reply with ONLY a JSON object, nothing before or after it:
 {"verdict": "approve" | "request_changes" | "comment",
  "summary": "<markdown overview: what the PR does and your key findings, concise>",
- "comments": [{"path": "<file path as in diff>", "line": <line number in the NEW file; must be a + or context line inside a hunk>, "body": "<markdown>"}]}
+ "comments": [{"path": "<file path as in diff>", "line": <a COMMENTABLE LINE number, or null for the whole file>, "body": "<markdown>"}]}
 At most 15 inline comments; only things worth a reviewer's attention.
 
 <pr>
@@ -628,7 +690,10 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       const [cmd, ...args] = agentArgv(checkout ? settings.agent.codeCommand : settings.agent.command, settings);
       log(`  running ${cmd}${checkout ? " with read-only code access" : ""} …`);
       const stdout = await runAsync(cmd, args, {
-        input: buildPrompt(pr, settings, { diff, skipped, codeAccess: !!checkout, previous, feedback }),
+        input: buildPrompt(pr, settings, {
+          diff, skipped, codeAccess: !!checkout, previous, feedback,
+          commentable: commentableRanges(valid, { skip: skipped }),
+        }),
         timeoutMs: settings.agent.timeoutSeconds * 1000,
         cwd: checkout?.dir ?? STATE_DIR, // without code access, keep the agent away from any project files
       });
@@ -637,12 +702,9 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       checkout?.cleanup();
     }
 
-    // Keep only inline comments GitHub will accept; fold the rest into the summary.
-    const ok = [], stray = [];
-    for (const c of review.comments) {
-      const line = Number(c.line);
-      (valid.get(c.path)?.has(line) ? ok : stray).push({ path: c.path, line: line || null, body: String(c.body) });
-    }
+    // Line comments where GitHub accepts them, file-level comments for other findings in changed files,
+    // and only findings about untouched files go into the summary.
+    const { placed: ok, folded: stray } = placeComments(review.comments, valid);
     if (stray.length) review.summary += "\n\n" + foldComments(stray);
 
     if (review.verdict === "approve" && !settings.allowApprove) {
