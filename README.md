@@ -285,11 +285,13 @@ All of these go in `config.json`. Any of them can also go on one repo, like `{ "
 
 | Setting | Default | What it does |
 |---|---|---|
+| `model` | `"opus"` | the Claude model for reviews, e.g. `"opus"`, `"sonnet"`, or `""` for Claude's default |
+| `effort` | `"high"` | how hard it thinks: `low`, `medium`, `high`, `xhigh`, `max`. Higher is slower and costs more |
 | `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --tools Read,Grep,Glob` | runs inside the checkout when `readCode` is on |
 | `agent.command` | the same with `--tools ""` | diff-only reviews |
 | `agent.timeoutSeconds` | `900` | how long one review may take |
 
-Any AI CLI works: it gets the prompt on stdin and must print a JSON review on stdout.
+Any AI CLI works: it gets the prompt on stdin and must print a JSON review on stdout. `model` and `effort` are only passed to `claude`.
 
 > [!IMPORTANT]
 > Upgrading from 0.1? If your `config.json` has an `agent` block, delete it to get the new locked-down defaults.
