@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - **PR Panel.** The inbox is now PR Panel, with four tabs: Inbox, Repos, Settings and History. Move with
   Tab or `i` `r` `s` `h`; the bottom line shows the keys you can use, `?` shows them all.
@@ -10,6 +10,15 @@
   that would break the config isn't saved.
 - **`pr-inbox` is now `pr-panel`.** The command is swapped for you when herdr starts. The action is
   `pr-reviewer.panel`; `pr-reviewer.inbox` still works.
+- **Reviews use Opus at high effort.** `--restricted` ignores your Claude settings, so reviews were quietly
+  running on the default model. Now set explicitly with `"model"` and `"effort"` (also per repo), and
+  changeable in the Settings tab.
+- **Findings on the lines they're about.** The AI is told exactly which lines it can comment on. A finding
+  that doesn't fit a changed line is posted as a comment on the whole file instead of being lost.
+- **PR Reviewer in herdr's agent list.** The watcher shows "reviewing …", "3 waiting" (needs you) or
+  "inbox empty".
+- **Safe mode.** Reviews run with Claude Code's `--safe-mode`: no `CLAUDE.md` from the PR, no hooks,
+  skills or plugins.
 
 ## 0.2.0
 
