@@ -120,6 +120,10 @@ const DEFAULTS = {
   ignoreAuthors: ["dependabot[bot]", "renovate[bot]"],
   pollSeconds: 180,
   maxParallel: 2, // reviews the watcher runs at the same time
+  // Which Claude model and effort reviews use. Needed explicitly: --restricted ignores your Claude
+  // settings, including your chosen model, so without these reviews fall back to the default model.
+  model: "opus",
+  effort: "high",
   maxDiffChars: 150000,
   readCode: true, // check out the PR so the AI can read the whole repo (read-only), not just the diff
   ignorePaths: [ // left out of the diff the AI sees (it can still open them when readCode is on)
@@ -469,6 +473,18 @@ const foldComments = (cs) =>
 
 // ---------- AI agent ----------
 
+/**
+ * Add --model / --effort from settings to a Claude Code command, unless the command already sets them.
+ * Other AI CLIs are left alone (they don't know these flags). Exported for tests.
+ */
+export function agentArgv(command, settings) {
+  const argv = [...command];
+  if (path.basename(argv[0] ?? "") !== "claude") return argv;
+  if (settings.model && !argv.includes("--model")) argv.push("--model", settings.model);
+  if (settings.effort && !argv.includes("--effort")) argv.push("--effort", settings.effort);
+  return argv;
+}
+
 const cut = (s, n) => (s.length > n ? s.slice(0, n) + "\n... [truncated]" : s);
 
 /**
@@ -609,7 +625,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       }
       const feedback = existingFeedback(repo, number, settings.footer);
 
-      const [cmd, ...args] = checkout ? settings.agent.codeCommand : settings.agent.command;
+      const [cmd, ...args] = agentArgv(checkout ? settings.agent.codeCommand : settings.agent.command, settings);
       log(`  running ${cmd}${checkout ? " with read-only code access" : ""} …`);
       const stdout = await runAsync(cmd, args, {
         input: buildPrompt(pr, settings, { diff, skipped, codeAccess: !!checkout, previous, feedback }),
