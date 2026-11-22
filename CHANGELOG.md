@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Works with more than Claude.** Codex, Gemini CLI, Cursor and opencode can write the reviews. New `ai`
+  setting (`auto` uses the first one installed; also per repo) and an **AI** row in the Settings tab,
+  where the model list follows the AI you pick.
+- **Only Claude is fully locked down.** With any other AI, reviews always wait in the inbox for your final
+  word and are never approvals. Settings shows those two rows as fixed.
+- **Safer checkouts.** Symlinks and files like `AGENTS.md`, `GEMINI.md`, `.cursor/` and `opencode.json` are
+  removed from the PR checkout before any AI reads it.
+- **Inbox and History show which AI wrote each review.**
+- A hand-written `agent.command` keeps working while `ai` is `auto`.
+
 ## 0.3.0
 
 - **PR Panel.** The inbox is now PR Panel, with four tabs: Inbox, Repos, Settings and History. Move with

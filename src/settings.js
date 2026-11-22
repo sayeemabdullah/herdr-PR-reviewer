@@ -3,9 +3,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { CONFIG_FILE, DEFAULTS, ROOT, loadConfig } from "./lib.js";
+import { CLAUDE_EFFORTS, CLAUDE_MODELS, customAgent, detectAgents, getAgent } from "./agents.js";
 
-export const MODELS = ["opus", "fable", "sonnet", "haiku"];
-export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+export const MODELS = CLAUDE_MODELS;
+export const EFFORTS = CLAUDE_EFFORTS;
 
 /**
  * The editable settings, in display order.
@@ -15,10 +16,12 @@ export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
  */
 export const FIELDS = [
   { section: "Reviews" },
+  { key: "ai", type: "choice", label: "AI", optionsFor: (raw) => aiOptions(raw),
+    help: "Which AI writes the reviews. auto = the first one installed. Switching resets the model." },
   { key: "finalWord", type: "bool", label: "Final word", on: "you approve first (inbox)", off: "AI posts by itself" },
-  { key: "model", type: "choice", label: "Model", options: MODELS, custom: true,
-    help: "Claude model for reviews. Opus finds the most; Sonnet and Haiku are faster and cheaper." },
-  { key: "effort", type: "choice", label: "Effort", options: EFFORTS,
+  { key: "model", type: "choice", label: "Model", optionsFor: (raw) => modelOptions(raw), custom: true,
+    help: "The AI's model. \"default\" is the AI's own choice. Press t to type any model name." },
+  { key: "effort", type: "choice", label: "Effort", optionsFor: (raw) => effortOptions(raw),
     help: "How hard the model thinks. Higher is slower and costs more." },
   { key: "readCode", type: "bool", label: "Read the whole repo", on: "yes (read-only checkout)", off: "diff only" },
   { key: "allowApprove", type: "bool", label: "AI may approve", on: "yes", off: "never, only comment / request changes" },
@@ -30,6 +33,56 @@ export const FIELDS = [
   { key: "onlyListedRepos", type: "bool", label: "Which repos", on: "only the repos below", off: "any repo where you're asked to review" },
   { key: "desktopNotifications", type: "bool", label: "Desktop notifications", on: "macOS notifications too", off: "herdr notifications only" },
 ];
+
+// ---------- which AI ----------
+
+/** Options for a choice field: fixed, or depending on the config (the AI decides which models exist). */
+export const fieldOptions = (f, raw) => (f.optionsFor ? f.optionsFor(raw) : f.options);
+
+/** The adapter in effect for the whole config, or for one repo: the chosen AI, else the first installed, else Claude. */
+export function adapterFor(raw, repo) {
+  const r = repo ? repoList(raw).find((x) => x.repo.toLowerCase() === repo.toLowerCase()) : null;
+  const ai = r?.ai ?? effective(raw, "ai");
+  if (ai !== "auto") return getAgent(ai) ?? getAgent("claude");
+  if (raw.agent?.command || raw.agent?.codeCommand) return customAgent();
+  const first = detectAgents()[0];
+  return getAgent(first?.id ?? "claude");
+}
+
+/** "auto", then every AI CLI that is installed (plus the one picked, if it has gone missing). */
+export function aiOptions(raw) {
+  const ids = detectAgents().map((a) => a.id);
+  const cur = effective(raw, "ai");
+  return ["auto", ...ids, ...(cur !== "auto" && !ids.includes(cur) ? [cur] : [])];
+}
+
+export const modelOptions = (raw, repo) => adapterFor(raw, repo).models;
+/** [] when this AI has no effort setting. */
+export const effortOptions = (raw, repo) => adapterFor(raw, repo).efforts ?? [];
+
+/** Why a setting can't be changed with this AI, or null. An AI that can't be locked down always waits for you. */
+export function lockedReason(raw, key, repo) {
+  const a = adapterFor(raw, repo);
+  if (a.lockdown !== "partial" || (key !== "finalWord" && key !== "allowApprove")) return null;
+  return `${a.label} can read files outside the PR, so ${key === "finalWord" ? "reviews always wait for you" : "it never approves"}.`;
+}
+
+/** What really happens for a setting: an AI that can't be locked down always waits for you and never approves. */
+export const forcedValue = (raw, key, value, repo) =>
+  lockedReason(raw, key, repo) ? key === "finalWord" : value;
+
+/**
+ * Choose the AI. Its models and efforts differ, so the model goes back to that AI's default, an effort it
+ * doesn't have is dropped, and per-repo models (which belong to the old AI) are cleared.
+ */
+export function setAI(raw, ai) {
+  setValue(raw, "ai", ai);
+  const a = adapterFor(raw);
+  setValue(raw, "model", a.defaultModel);
+  if (!a.efforts || !a.efforts.includes(effective(raw, "effort"))) delete raw.effort;
+  if (raw.repos) raw.repos = repoList(raw).map(({ model: _drop, ...r }) => r);
+  return raw;
+}
 
 /** The config file as written (no defaults merged in), created from the example on first use. */
 export function readRaw(file = CONFIG_FILE) {

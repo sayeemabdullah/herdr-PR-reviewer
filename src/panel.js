@@ -14,9 +14,10 @@ import {
   parsePRUrl, postReview, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
 import {
-  FIELDS, MODELS, addRepo, cycle, effective, parseNumber, parseRepo, readRaw, removeRepo, repoList,
-  setRepoValue, setValue, writeRaw,
+  FIELDS, adapterFor, addRepo, cycle, effective, fieldOptions, forcedValue, lockedReason, modelOptions, parseNumber, parseRepo,
+  readRaw, removeRepo, repoList, setAI, setRepoValue, setValue, writeRaw,
 } from "./settings.js";
+import { NO_AI_MESSAGE, detectAgents } from "./agents.js";
 
 // ---------- styling ----------
 
@@ -218,6 +219,8 @@ const GLOBAL_KEYS = [["tab", "next tab"], ["?", "help"], ["q", "quit"]];
 
 // ---------- Inbox ----------
 
+const raw0 = () => { try { return readRaw(); } catch { return null; } };
+
 function renderInbox(W, H) {
   if (cur) return renderDetail(W, H);
   const head = tabStrip(W);
@@ -229,7 +232,10 @@ function renderInbox(W, H) {
   const body = [];
 
   if (!drafts.length) {
-    body.push("", "", paint("    All caught up.", "bold", "green"), "");
+    if (!detectAgents().length && !raw0()?.agent?.command) {
+      body.push("", "", paint("    No AI found to write reviews.", "bold", "yellow"), "");
+      body.push(paint(`    ${NO_AI_MESSAGE.replace("No AI CLI found. ", "")}`, "gray"), "");
+    } else body.push("", "", paint("    All caught up.", "bold", "green"), "");
     body.push(paint("    New AI reviews show up here on their own, and wait for your final word.", "gray"), "");
     body.push(`    ${paint("n", "cyan", "bold")}  review any PR now, from its link`);
     body.push(`    ${paint("r", "cyan", "bold")}  choose which repos are watched`);
@@ -289,7 +295,7 @@ function renderDetail(W, H) {
   const head = [
     ...tabStrip(W),
     ` ${badge(d.verdict)}  ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(d.title, "bold")}`,
-    ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago`, "gray")}   ${remoteNote(d)}`,
+    ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago${d.ai ? ` by ${d.ai.label}${d.ai.model && d.ai.model !== "default" ? ` (${d.ai.model})` : ""}` : ""}`, "gray")}   ${remoteNote(d)}`,
     rule(W),
   ];
   const pairs = [["esc", "back"], ["p", "post"], ["a/r/c", "verdict"], ["1-9", "comment on/off"], ["e/E", "edit"],
@@ -464,7 +470,7 @@ function reposKey(str, k) {
       saveSettings((c) => setRepoValue(c, r.repo, "finalWord", nextFw),
         `${r.repo}: ${nextFw === undefined ? "uses the global final word" : nextFw ? "you approve first" : "the AI posts by itself"}.`);
     } else if (str === "m") {
-      const opts = [undefined, ...MODELS];
+      const opts = [undefined, ...modelOptions(raw, r.repo)];
       const nextModel = opts[(opts.indexOf(r.model) + 1) % opts.length];
       saveSettings((c) => setRepoValue(c, r.repo, "model", nextModel), `${r.repo}: ${nextModel ? `uses ${nextModel}` : "uses the global model"}.`);
     } else if (str === "x" || k === "delete" || k === "backspace") {
@@ -488,11 +494,21 @@ function settingsRows() {
   return rows;
 }
 
-function fieldValue(f, v) {
-  if (f.type === "bool") return v ? paint("on  ", "green", "bold") + paint(f.on, "gray") : paint("off ", "yellow", "bold") + paint(f.off, "gray");
+function fieldValue(f, v, raw) {
+  const locked = lockedReason(raw, f.key);
+  if (f.type === "bool") {
+    v = forcedValue(raw, f.key, v);
+    const base = v ? paint("on  ", "green", "bold") + paint(f.on, "gray") : paint("off ", "yellow", "bold") + paint(f.off, "gray");
+    return base + (locked ? paint(`  (fixed by ${adapterFor(raw).label})`, "yellow") : "");
+  }
   if (f.type === "choice") {
-    const opts = f.options.includes(v) ? f.options : [...f.options, v];
-    return opts.map((o) => (o === v ? paint(` ${o} `, "inv", "cyan", "bold") : paint(` ${o} `, "gray"))).join(" ");
+    const base = fieldOptions(f, raw);
+    if (!base.length) return paint(`n/a for ${adapterFor(raw).label}`, "gray");
+    const opts = base.includes(v) ? base : [...base, v];
+    const shown = opts.map((o) => (o === v ? paint(` ${o} `, "inv", "cyan", "bold") : paint(` ${o} `, "gray"))).join(" ");
+    if (f.key !== "ai") return shown;
+    const a = adapterFor(raw);
+    return shown + paint(`  ${v === "auto" ? "→ " + a.label : a.label}${a.lockdown === "partial" ? " · less locked down" : ""}`, a.lockdown === "partial" ? "yellow" : "gray");
   }
   return paint(String(v), "bold");
 }
@@ -510,7 +526,10 @@ function renderSettings(W, H) {
     : f.type === "choice" ? [["←→", "change"], ...(f.custom ? [["t", "type a name"]] : []), ["E", "edit file"], ...GLOBAL_KEYS]
     : f.type === "number" ? [["⏎", "type a number"], ["E", "edit file"], ...GLOBAL_KEYS]
     : [["⏎", "turn on/off"], ["E", "edit file"], ...GLOBAL_KEYS];
-  const tip = f?.help ?? (f ? "Saved straight away. The watcher uses it from its next check." : CONFIG_FILE.replace(os.homedir(), "~"));
+  const installed = detectAgents().map((a) => a.id);
+  const tip = (f && lockedReason(raw, f.key)) ||
+    (f?.key === "ai" ? `Installed: ${installed.join(", ") || "none"}. ${f.help}` : null) ||
+    f?.help || (f ? "Saved straight away. The watcher uses it from its next check." : CONFIG_FILE.replace(os.homedir(), "~"));
   const foot = bottom(pairs, tip, W);
   const bodyH = H - head.length - foot.length;
   const LW = 26;
@@ -521,7 +540,7 @@ function renderSettings(W, H) {
     const on = r === at;
     if (on) selLine = body.length;
     const mark = on ? paint(" ▸  ", "cyan", "bold") : "    ";
-    if (r.field) body.push(mark + (on ? paint(fitPlain(r.field.label, LW), "bold") : fitPlain(r.field.label, LW)) + fieldValue(r.field, effective(raw, r.field.key)));
+    if (r.field) body.push(mark + (on ? paint(fitPlain(r.field.label, LW), "bold") : fitPlain(r.field.label, LW)) + fieldValue(r.field, effective(raw, r.field.key), raw));
     else body.push(mark + paint("Edit config.json in your editor", "cyan", "bold") + paint("  ignore paths, instructions, footer…", "gray"));
   }
   scroll = Math.max(0, Math.min(selLine - Math.floor(bodyH / 2), body.length - bodyH));
@@ -539,9 +558,17 @@ function settingsKey(str, k) {
   const go = k === "return" || k === "space";
   if (at.file) { if (go) editConfigFile(); return go; }
   const f = at.field, v = effective(raw, f.key);
-  if (f.type === "bool" && (go || k === "left" || k === "right")) saveSettings((c) => setValue(c, f.key, !v), `${f.label}: ${!v ? f.on : f.off}.`);
+  const locked = lockedReason(raw, f.key);
+  if (locked && (go || k === "left" || k === "right")) { setFlash(locked, "yellow", 6000); return true; }
+  if (f.type === "choice" && !fieldOptions(f, raw).length && (go || k === "left" || k === "right")) {
+    setFlash(`${adapterFor(raw).label} has no ${f.label.toLowerCase()} setting.`, "yellow"); return true;
+  }
+  if (f.key === "ai" && (go || k === "left" || k === "right")) {
+    const nv = cycle(fieldOptions(f, raw), v, k === "left" ? -1 : 1);
+    saveSettings((c) => setAI(c, nv), `AI: ${nv}. Model reset to its default; per-repo models cleared.`);
+  } else if (f.type === "bool" && (go || k === "left" || k === "right")) saveSettings((c) => setValue(c, f.key, !v), `${f.label}: ${!v ? f.on : f.off}.`);
   else if (f.type === "choice" && (go || k === "right" || k === "left")) {
-    const nv = cycle(f.options, v, k === "left" ? -1 : 1);
+    const nv = cycle(fieldOptions(f, raw), v, k === "left" ? -1 : 1);
     saveSettings((c) => setValue(c, f.key, nv), `${f.label}: ${nv}.`);
   } else if (f.type === "choice" && f.custom && str === "t") {
     input = { label: `${f.label}:`, value: String(v), onSubmit: (t) => t.trim() && saveSettings((c) => setValue(c, f.key, t.trim()), `${f.label}: ${t.trim()}.`) };
@@ -561,9 +588,9 @@ function renderHistory(W, H) {
   const bodyH = H - head.length - foot.length;
   const COLOR = { posted: "green", drafted: "yellow", discarded: "gray", failed: "red" };
   const body = all.length
-    ? [paint(`   ${"STATUS".padEnd(10)}${"PR".padEnd(Math.max(10, W - 40))} ${"POSTED AS".padEnd(16)}WHEN`, "gray"), ...all.flatMap(([key, v]) => {
-      const row = `   ${paint((v.status ?? "?").padEnd(10), COLOR[v.status] ?? "gray", "bold")}${fitPlain(key, Math.max(10, W - 40))} ` +
-        paint(`${(v.event ?? "").padEnd(16)}${age(v.at ?? 0)} ago`, "gray");
+    ? [paint(`   ${"STATUS".padEnd(10)}${"PR".padEnd(Math.max(10, W - 54))} ${"AI".padEnd(13)}${"POSTED AS".padEnd(16)}WHEN`, "gray"), ...all.flatMap(([key, v]) => {
+      const row = `   ${paint((v.status ?? "?").padEnd(10), COLOR[v.status] ?? "gray", "bold")}${fitPlain(key, Math.max(10, W - 54))} ` +
+        paint(`${fitPlain(v.ai?.label ?? "", 12).padEnd(13)}${(v.event ?? "").padEnd(16)}${age(v.at ?? 0)} ago`, "gray");
       return v.status === "failed" && v.error ? [row, paint(`             ${String(v.error).split("\n")[0]}`, "red")] : [row];
     })]
     : ["", paint("    Nothing yet. Reviews you post or discard are listed here.", "gray")];

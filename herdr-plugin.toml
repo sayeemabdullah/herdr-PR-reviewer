@@ -2,7 +2,7 @@ id = "pr-reviewer"
 name = "PR Reviewer"
 version = "0.3.0"
 min_herdr_version = "0.8.0"
-description = "Watch GitHub repos and have Claude (or another AI CLI) review incoming PRs, with an optional human final word"
+description = "Watch GitHub repos and have your AI (Claude Code, Codex, Gemini CLI, Cursor or opencode) review incoming PRs, with an optional human final word"
 platforms = ["macos", "linux"]
 
 # Opens the watcher tab when the herdr server starts (if autoStartWatcher is on).

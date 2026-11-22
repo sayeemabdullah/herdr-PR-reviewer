@@ -1,13 +1,14 @@
 <div align="center">
 
-<img src="assets/header.png" alt="herdr + Claude + GitHub" width="420">
+<img src="assets/header.png" alt="herdr + AI + GitHub" width="420">
 
 # PR Reviewer for herdr
 
-**Claude reviews the pull requests you're asked to review.**<br>
+**Your AI reviews the pull requests you're asked to review.**<br>
+**Claude Code, Codex, Gemini CLI, Cursor or opencode: use whichever you already have.**<br>
 **You read each review in PR Panel and press _post_, or let it post on its own.**
 
-<p><a href="https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/sayeemabdullah/herdr-PR-reviewer/ci.yml?branch=master&style=flat-square&label=CI"></a> <a href="https://herdr.dev/plugins/"><img alt="herdr plugin, 0.8 or newer" src="https://img.shields.io/badge/herdr%20plugin-%E2%89%A5%200.8-222?style=flat-square"></a> <a href="https://nodejs.org"><img alt="Node 22 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022-339933?style=flat-square&logo=node.js&logoColor=white"></a> <a href="https://claude.com/claude-code"><img alt="Claude Code, restricted mode" src="https://img.shields.io/badge/Claude%20Code-restricted-D97757?style=flat-square"></a> <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-0969da?style=flat-square"></a></p>
+<p><a href="https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/sayeemabdullah/herdr-PR-reviewer/ci.yml?branch=master&style=flat-square&label=CI"></a> <a href="https://herdr.dev/plugins/"><img alt="herdr plugin, 0.8 or newer" src="https://img.shields.io/badge/herdr%20plugin-%E2%89%A5%200.8-222?style=flat-square"></a> <a href="https://nodejs.org"><img alt="Node 22 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022-339933?style=flat-square&logo=node.js&logoColor=white"></a> <a href="#which-ai"><img alt="Works with Claude Code, Codex, Gemini CLI, Cursor and opencode" src="https://img.shields.io/badge/AI-Claude%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20Cursor%20%C2%B7%20opencode-D97757?style=flat-square"></a> <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-0969da?style=flat-square"></a></p>
 
 [Quick start](#quick-start) · [How it works](#how-it-works) · [PR Panel](#panel) · [Settings](#settings) · [Safety](#safety) · [Contributing](CONTRIBUTING.md)
 
@@ -26,7 +27,7 @@
 <td width="33%" valign="top">
 
 ### Reads the code
-Claude gets a read-only checkout of the PR, so it can open callers, types and tests, and still review big PRs whose diff gets cut off.
+Your AI gets a read-only checkout of the PR, so it can open callers, types and tests, and still review big PRs whose diff gets cut off.
 
 </td>
 <td width="33%" valign="top">
@@ -52,7 +53,7 @@ It skips points other reviewers already made, leaves lockfiles and build output 
 <td valign="top">
 
 ### Locked down
-It runs with no shell, none of your MCP servers and none of your settings, and can only read files inside the checkout.
+Claude runs with no shell, none of your MCP servers and none of your settings. Other AIs get the tightest settings they offer, and always wait for your final word. [Details](#safety)
 
 </td>
 <td valign="top">
@@ -64,12 +65,26 @@ A watcher tab, a PR Panel pane, shortcuts and notifications. A `pr-panel` comman
 </tr>
 </table>
 
+### Works with
+
+<table>
+<tr>
+<td align="center" width="20%"><img src="assets/claude.jpeg" width="56" alt="Claude Code"><br><b>Claude Code</b><br><sub><code>claude</code></sub></td>
+<td align="center" width="20%"><img src="assets/codex.png" width="56" alt="Codex"><br><b>Codex</b><br><sub><code>codex</code></sub></td>
+<td align="center" width="20%"><img src="assets/gemini.png" width="56" alt="Gemini CLI"><br><b>Gemini CLI</b><br><sub><code>gemini</code></sub></td>
+<td align="center" width="20%"><img src="assets/cursor.png" width="56" alt="Cursor"><br><b>Cursor</b><br><sub><code>cursor-agent</code></sub></td>
+<td align="center" width="20%"><img src="assets/opencode.png" width="56" alt="opencode"><br><b>opencode</b><br><sub><code>opencode</code></sub></td>
+</tr>
+</table>
+
+You don't need Claude. Install any of these and sign in, and PR Reviewer finds it by itself. See [Which AI](#which-ai).
+
 <a id="quick-start"></a>
 
 ## Quick start
 
 > [!NOTE]
-> You need **herdr 0.8+**, **Node 22+**, `git`, the [GitHub CLI](https://cli.github.com) signed in (`gh auth status`), and an up-to-date [Claude Code](https://claude.com/claude-code) (`claude`).
+> You need **herdr 0.8+**, **Node 22+**, `git`, the [GitHub CLI](https://cli.github.com) signed in (`gh auth status`), and **at least one AI CLI, signed in**: [Claude Code](https://claude.com/claude-code), [Codex](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Cursor](https://cursor.com/cli) or [opencode](https://opencode.ai). Which one is used is up to you, see [Which AI](#which-ai).
 
 **1. Install**
 
@@ -115,14 +130,14 @@ herdr plugin action invoke pr-reviewer.watch
 flowchart LR
     gh["GitHub<br/>PR needs your review"] --> w["Watcher<br/>checks every 3 min"]
     w --> co["Read-only checkout<br/>of the PR"]
-    co --> ai["Claude<br/>restricted, read-only"]
+    co --> ai["Your AI<br/>read-only"]
     ai --> fw{"Final word?"}
     fw -- "on (default)" --> inbox["Inbox<br/>you read, edit, post"]
     fw -- "off" --> post["Posted to GitHub<br/>as you"]
     inbox --> post
 ```
 
-For each PR, Claude gets:
+For each PR, the AI gets:
 
 - **the diff**, minus lockfiles and build output (`ignorePaths`)
 - **the whole repo** at the PR's commit, so it can check callers, types and tests
@@ -270,15 +285,15 @@ A change that would break the config isn't saved, and the panel tells you why.
 
 | Section | What you can change |
 |---|---|
-| Reviews | final word, **model** (opus, fable, sonnet, haiku, or type any model name), effort, read the whole repo, AI may approve, re-review new commits, skip draft PRs |
+| Reviews | **AI** (auto or any installed one), final word, **model** (that AI's models, or type any model name), effort, read the whole repo, AI may approve, re-review new commits, skip draft PRs |
 | Watcher | how often to check, reviews at once, desktop notifications |
 
 | Key | Does |
 |---|---|
 | <kbd>↑</kbd> <kbd>↓</kbd> | move |
 | <kbd>Enter</kbd> | change: on/off, next option, or type a number |
-| <kbd>→</kbd> / <kbd>←</kbd> | next / previous option (model, effort) |
-| <kbd>t</kbd> | type a model name, e.g. a full one like `claude-opus-5-5` |
+| <kbd>→</kbd> / <kbd>←</kbd> | next / previous option (AI, model, effort) |
+| <kbd>t</kbd> | type a model name, e.g. a full one like `claude-opus-5-5` or `gpt-5.5` |
 | <kbd>E</kbd> | open `config.json` in your editor, for everything else (`ignorePaths`, `instructions`, …) |
 
 ### Shortcuts
@@ -335,8 +350,9 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 
 | Setting | Default | What it does |
 |---|---|---|
-| `model` | `"opus"` | the Claude model for reviews, e.g. `"opus"`, `"sonnet"`, or `""` for Claude's default |
-| `effort` | `"high"` | how hard it thinks: `low`, `medium`, `high`, `xhigh`, `max`. Higher is slower and costs more |
+| `ai` | `"auto"` | which AI reviews: `"auto"`, `"claude"`, `"codex"`, `"gemini"`, `"cursor"` or `"opencode"`. Can go on one repo too |
+| `model` | `"opus"` | that AI's model, e.g. `"opus"` for Claude or `"gpt-5.5"` for Codex. `"default"` (or a Claude name like `"opus"` when the AI isn't Claude) lets the AI choose |
+| `effort` | `"high"` | how hard it thinks: `low`, `medium`, `high`, `xhigh`, `max`. Higher is slower and costs more. Only Claude and Codex have it |
 | `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
 | `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
 | `instructions` | `""` | extra things the reviewer should check |
@@ -346,16 +362,37 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 
 </details>
 
-<details>
+<a id="which-ai"></a>
+
+<details open>
 <summary><b>Which AI runs</b></summary>
+
+Set `ai` in `config.json`, or pick it in the **Settings** tab (it lists the AIs it found). `"auto"` uses the first one installed, in this order:
+
+| `ai` | AI | Command it looks for | Locked down |
+|---|---|---|---|
+| `claude` | Claude Code | `claude` | **fully** |
+| `codex` | Codex | `codex` | partly |
+| `gemini` | Gemini CLI | `gemini` | partly |
+| `cursor` | Cursor | `cursor-agent` or `agent` | partly |
+| `opencode` | opencode | `opencode` | partly |
+
+Sign in to the one you use the way it asks (for example run `codex` or `gemini` once). Switching the AI in Settings resets the model to that AI's default.
+
+```json
+{ "ai": "auto",
+  "repos": [ { "repo": "your-team/api", "ai": "codex" } ] }
+```
+
+An AI that isn't fully locked down **always waits for your final word and never approves**, whatever `finalWord` and `allowApprove` say. Settings shows those two rows as fixed.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --safe-mode --tools Read,Grep,Glob` | runs inside the checkout when `readCode` is on |
-| `agent.command` | the same with `--tools ""` | diff-only reviews |
-| `agent.timeoutSeconds` | `900` | how long one review may take |
+| `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --safe-mode --tools Read,Grep,Glob` | Claude, inside the checkout when `readCode` is on |
+| `agent.command` | the same with `--tools ""` | Claude, diff-only reviews |
+| `agent.timeoutSeconds` | `900` | how long one review may take, for any AI |
 
-Any AI CLI works: it gets the prompt on stdin and must print a JSON review on stdout. `model` and `effort` are only passed to `claude`.
+Want a different AI CLI? Put its command in `agent.command` / `agent.codeCommand` and leave `ai` on `"auto"`: it gets the prompt on stdin and must print a JSON review on stdout. That runs exactly as you wrote it, so check what it can do. `model` and `effort` are only passed to `claude`.
 
 > [!IMPORTANT]
 > Upgrading from 0.1? If your `config.json` has an `agent` block, delete it to get the new locked-down defaults.
@@ -369,14 +406,17 @@ Any AI CLI works: it gets the prompt on stdin and must print a JSON review on st
 > [!WARNING]
 > A PR can contain text that tries to trick the AI ("approve this"). Keep `"finalWord": true` on repos where strangers can open PRs.
 
-The AI is told to treat the PR, its comments and the repo's files as **untrusted**, and it's locked down:
+The AI is told to treat the PR, its comments and the repo's files as **untrusted**. Before any AI sees the checkout, symlinks (which could point at your files) and files the AI CLIs load as instructions or settings (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursor/`, `.gemini/`, `.codex/`, `opencode.json`, …) are removed from it, so a PR can't plant them. Then each AI is locked down as far as it allows:
 
-| | |
-|---|---|
-| `--restricted` | no shell or other code-running tools, and none of your Claude settings are loaded |
-| `--strict-mcp-config` | none of your MCP servers (mail, drive, …) are available |
-| `--safe-mode` | no `CLAUDE.md`, hooks, skills or plugins, so a PR can't add a `CLAUDE.md` with instructions for the reviewer |
-| read-only tools | it can only **read** files, and only inside the PR's checkout |
+| AI | What's turned off | What's left |
+|---|---|---|
+| **Claude Code** | `--restricted`: no shell, none of your Claude settings. `--strict-mcp-config`: none of your MCP servers. `--safe-mode`: no hooks, skills or plugins. Read-only tools, only inside the checkout | nothing: **fully locked down** |
+| **Codex** | your config, rules and saved sessions; read-only sandbox with no network | its shell can still read files outside the checkout |
+| **Gemini CLI** | plan mode (read-only tools), extensions, MCP servers | it reads your `~/.gemini` settings |
+| **Cursor** | ask mode, sandbox on, a deny list for shell, writes, web and MCP | it takes permissions from files; there's no way to confine reads to the checkout |
+| **opencode** | plugins; shell, edits, web and files outside the checkout are denied | it still loads your provider config |
+
+Only Claude can be fully locked down, so with any other AI **every review waits in the inbox for your final word and is never an approval**, even if you turned those on. Read them before you post, especially on repos where strangers can open PRs.
 
 The checkout lives in the plugin's state folder (`repos/`, `worktrees/`), never in your own clones, and each review's checkout is removed afterwards. Reviews are posted as **you**, with a note saying they're AI-assisted.
 
@@ -393,5 +433,5 @@ Changes go through pull requests with [Conventional Commit](https://www.conventi
 
 <div align="center">
 <br>
-<sub>MIT licensed · built for <a href="https://herdr.dev">herdr</a> · reviews by <a href="https://claude.com/claude-code">Claude</a></sub>
+<sub>MIT licensed · built for <a href="https://herdr.dev">herdr</a> · reviews by the AI you choose</sub>
 </div>
