@@ -28,25 +28,25 @@
 
 <br>
 
-## ✨ Features
+## Features
 
 <table>
 <tr>
 <td width="33%" valign="top">
 
-### 🔎 Reads the code
+### Reads the code
 Claude gets a read-only checkout of the PR, so it can open callers, types and tests, and still review big PRs whose diff gets cut off.
 
 </td>
 <td width="33%" valign="top">
 
-### ✋ Your final word
+### Your final word
 Reviews wait in an inbox until you **post**, edit or discard them. Or turn that off per repo and let it post on its own.
 
 </td>
 <td width="33%" valign="top">
 
-### 🔁 Follow-ups
+### Follow-ups
 After new commits it gets its previous review and the changes since, says what's fixed, and doesn't repeat itself.
 
 </td>
@@ -54,19 +54,19 @@ After new commits it gets its previous review and the changes since, says what's
 <tr>
 <td valign="top">
 
-### 🧹 Signal, not noise
+### Signal, not noise
 It skips points other reviewers already made, leaves lockfiles and build output out, and suggests one-click fixes.
 
 </td>
 <td valign="top">
 
-### 🔒 Locked down
+### Locked down
 It runs with no shell, none of your MCP servers and none of your settings, and can only read files inside the checkout.
 
 </td>
 <td valign="top">
 
-### ⚡ Fits herdr
+### Fits herdr
 A watcher tab, an inbox pane, shortcuts and notifications. A `pr-inbox` command works in any terminal.
 
 </td>
@@ -75,7 +75,7 @@ A watcher tab, an inbox pane, shortcuts and notifications. A `pr-inbox` command 
 
 <a id="quick-start"></a>
 
-## 🚀 Quick start
+## Quick start
 
 > [!NOTE]
 > You need **herdr 0.8+**, **Node 22+**, `git`, the [GitHub CLI](https://cli.github.com) signed in (`gh auth status`), and an up-to-date [Claude Code](https://claude.com/claude-code) (`claude`).
@@ -116,16 +116,16 @@ herdr plugin action invoke pr-reviewer.watch
 
 <a id="how-it-works"></a>
 
-## 🧭 How it works
+## How it works
 
 ```mermaid
 flowchart LR
-    gh["🐙 GitHub<br/>PR needs your review"] --> w["⏱️ Watcher<br/>checks every 3 min"]
-    w --> co["📂 Read-only checkout<br/>of the PR"]
-    co --> ai["🤖 Claude<br/>restricted, read-only"]
+    gh["GitHub<br/>PR needs your review"] --> w["Watcher<br/>checks every 3 min"]
+    w --> co["Read-only checkout<br/>of the PR"]
+    co --> ai["Claude<br/>restricted, read-only"]
     ai --> fw{"Final word?"}
-    fw -- "on (default)" --> inbox["📥 Inbox<br/>you read, edit, post"]
-    fw -- "off" --> post["✅ Posted to GitHub<br/>as you"]
+    fw -- "on (default)" --> inbox["Inbox<br/>you read, edit, post"]
+    fw -- "off" --> post["Posted to GitHub<br/>as you"]
     inbox --> post
 ```
 
@@ -150,7 +150,7 @@ It replies with a verdict (**approve**, **request changes** or **comment**), a s
 
 <a id="final-word"></a>
 
-## ✋ Your final word: on or off
+## Your final word: on or off
 
 `finalWord` decides whether you check each review before it goes out. Set it for everything, or per repo:
 
@@ -174,7 +174,7 @@ A setting on a repo wins over the one at the top.
 
 <a id="inbox"></a>
 
-## 📥 The inbox
+## The inbox
 
 Reviews wait here for your final word. Open it with any of:
 
@@ -187,12 +187,12 @@ The top line shows whether the watcher is running and which PR it's reviewing ri
 
 | Shows | Means |
 |---|---|
-| ✓ up to date | the review matches the PR as it is now |
-| ⚠ new commits since this review | the author pushed after the review. You can still post, and you'll be warned first |
-| ⚠ PR is merged / closed | the PR is finished. You'll probably want to discard the review |
+| up to date (green) | the review matches the PR as it is now |
+| new commits since this review (yellow) | the author pushed after the review. You can still post, and you'll be warned first |
+| PR is merged / closed (yellow) | the PR is finished. You'll probably want to discard the review |
 
 <details>
-<summary><b>⌨️ Keys in the list</b></summary>
+<summary><b>Keys in the list</b></summary>
 
 | Key | Does |
 |---|---|
@@ -208,7 +208,7 @@ The top line shows whether the watcher is running and which PR it's reviewing ri
 </details>
 
 <details>
-<summary><b>⌨️ Keys inside a review</b></summary>
+<summary><b>Keys inside a review</b></summary>
 
 | Key | Does |
 |---|---|
@@ -246,7 +246,7 @@ description = "PR review watcher"
 
 <a id="settings"></a>
 
-## ⚙️ Settings
+## Settings
 
 All of these go in `config.json`. Any of them can also go on one repo, like `{ "repo": "…", "finalWord": false }`.
 
@@ -307,7 +307,7 @@ Any AI CLI works: it gets the prompt on stdin and must print a JSON review on st
 
 <a id="safety"></a>
 
-## 🔒 Safe by default
+## Safe by default
 
 > [!WARNING]
 > A PR can contain text that tries to trick the AI ("approve this"). Keep `"finalWord": true` on repos where strangers can open PRs.
@@ -322,7 +322,7 @@ The AI is told to treat the PR, its comments and the repo's files as **untrusted
 
 The checkout lives in the plugin's state folder (`repos/`, `worktrees/`), never in your own clones, and each review's checkout is removed afterwards. Reviews are posted as **you**, with a note saying they're AI-assisted.
 
-## 🛠️ Develop
+## Develop
 
 ```sh
 git clone https://github.com/sayeemabdullah/herdr-PR-reviewer && cd herdr-PR-reviewer
