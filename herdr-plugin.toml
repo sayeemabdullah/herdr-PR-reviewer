@@ -1,0 +1,34 @@
+id = "pr-reviewer"
+name = "PR Reviewer"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Watch GitHub repos and have Claude (or another AI CLI) review incoming PRs, with an optional human final word"
+platforms = ["macos", "linux"]
+
+# Opens the watcher tab when the herdr server starts (if autoStartWatcher is on).
+[[startup]]
+command = ["node", "src/startup.js"]
+
+[[actions]]
+id = "watch"
+title = "PR Reviewer: start / focus watcher"
+command = ["node", "src/open-pane.js", "watcher"]
+
+[[actions]]
+id = "inbox"
+title = "PR Reviewer: open review inbox"
+command = ["node", "src/open-pane.js", "inbox"]
+
+# Long-running poll loop; lives in its own tab so you can see what it's doing.
+[[panes]]
+id = "watcher"
+title = "PR watcher"
+placement = "tab"
+command = ["node", "src/watcher.js"]
+
+# Interactive inbox: approve / edit / discard AI drafts before they're posted.
+[[panes]]
+id = "inbox"
+title = "PR review inbox"
+placement = "overlay"
+command = ["node", "src/inbox.js"]

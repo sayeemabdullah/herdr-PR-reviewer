@@ -1,0 +1,22 @@
+{
+  "repos": [
+    { "repo": "your-name/your-repo", "review": "all" },
+    { "repo": "your-team/team-repo", "review": "requested" }
+  ],
+  "finalWord": true,
+  "allowApprove": true,
+  "rereviewOnPush": true,
+  "skipDrafts": true,
+  "ignoreRepos": [],
+  "ignoreAuthors": ["dependabot[bot]", "renovate[bot]"],
+  "onlyListedRepos": false,
+  "pollSeconds": 180,
+  "maxDiffChars": 150000,
+  "instructions": "",
+  "desktopNotifications": true,
+  "autoStartWatcher": true,
+  "agent": {
+    "command": ["claude", "-p", "--tools", "", "--output-format", "text"],
+    "timeoutSeconds": 600
+  }
+}
