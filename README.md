@@ -271,6 +271,8 @@ All of these go in `config.json`. Any of them can also go on one repo, like `{ "
 
 | Setting | Default | What it does |
 |---|---|---|
+| `model` | `"opus"` | the Claude model for reviews, e.g. `"opus"`, `"sonnet"`, or `""` for Claude's default |
+| `effort` | `"high"` | how hard it thinks: `low`, `medium`, `high`, `xhigh`, `max`. Higher is slower and costs more |
 | `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
 | `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
 | `instructions` | `""` | extra things the reviewer should check |
@@ -285,8 +287,6 @@ All of these go in `config.json`. Any of them can also go on one repo, like `{ "
 
 | Setting | Default | What it does |
 |---|---|---|
-| `model` | `"opus"` | the Claude model for reviews, e.g. `"opus"`, `"sonnet"`, or `""` for Claude's default |
-| `effort` | `"high"` | how hard it thinks: `low`, `medium`, `high`, `xhigh`, `max`. Higher is slower and costs more |
 | `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --tools Read,Grep,Glob` | runs inside the checkout when `readCode` is on |
 | `agent.command` | the same with `--tools ""` | diff-only reviews |
 | `agent.timeoutSeconds` | `900` | how long one review may take |
