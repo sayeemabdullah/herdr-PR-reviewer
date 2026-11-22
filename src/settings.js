@@ -1,4 +1,4 @@
-// Settings shown in the inbox (press s). Reads and writes config.json directly, keeping any keys it
+// Settings shown in PR Panel (Settings and Repos tabs). Reads and writes config.json directly, keeping any keys it
 // doesn't know about, and only writing a value when it differs from the default.
 import fs from "node:fs";
 import path from "node:path";

@@ -1,8 +1,13 @@
 // Startup hook: start the watcher in the background tab if configured.
 import { spawnSync } from "node:child_process";
-import { CONFIG_FILE, loadConfig, notify, writeLauncher } from "./lib.js";
+import { CONFIG_FILE, installCli, loadConfig, notify, writeLauncher } from "./lib.js";
 
 writeLauncher();
+// pr-inbox was renamed to pr-panel: swap the command if the old one is installed.
+try {
+  const { message } = installCli({ onlyIfOld: true });
+  if (message) notify("PR Reviewer", message, "none");
+} catch {}
 
 const cfg = loadConfig();
 if (cfg.missing) {

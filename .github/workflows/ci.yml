@@ -39,11 +39,11 @@ jobs:
           git config --global user.name ci
           node --test --test-reporter=spec
 
-      - name: Smoke test — inbox starts without a terminal
+      - name: Smoke test — PR Panel starts without a terminal
         run: |
           export HERDR_PLUGIN_CONFIG_DIR="$RUNNER_TEMP/cfg" HERDR_PLUGIN_STATE_DIR="$RUNNER_TEMP/state"
-          node src/inbox.js < /dev/null | tee out.txt
-          grep -q "PR Review Inbox" out.txt
+          node src/panel.js < /dev/null | tee out.txt
+          grep -q "PR Panel" out.txt
 
       - name: Smoke test — review CLI rejects a bad URL
         run: |
