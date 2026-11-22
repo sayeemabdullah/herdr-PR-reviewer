@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Settings in the inbox.** Press `s` to change the model, effort, final word, polling and more, and to
+  add or remove repos, with per-repo final word and model. Saved straight to `config.json`; a change that
+  would break the config isn't saved.
+
 ## 0.2.0
 
 - **Reviews read the code, not just the diff.** The PR is checked out (read-only) and the AI can open

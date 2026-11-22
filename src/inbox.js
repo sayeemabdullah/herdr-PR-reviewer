@@ -7,8 +7,11 @@ import path from "node:path";
 import readline from "node:readline";
 import {
   ROOT, deleteDraft, getReviewed, listActiveReviews, listDrafts, loadConfig, markReviewed, parsePRUrl,
-  postReview, saveDraft, settingsFor, watcherRunning,
+  CONFIG_FILE, postReview, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
+import {
+  FIELDS, MODELS, addRepo, cycle, effective, parseNumber, readRaw, removeRepo, repoList, setRepoValue, setValue, writeRaw,
+} from "./settings.js";
 
 // ---------- styling helpers ----------
 
@@ -95,7 +98,7 @@ if (!process.stdin.isTTY || !process.stdout.isTTY) {
 // ---------- state ----------
 
 const out = process.stdout;
-let view = "list"; // list | detail | history
+let view = "list"; // list | detail | history | settings
 let drafts = [];
 let sel = 0; // selected row in list
 let cur = null; // draft open in detail view
@@ -104,6 +107,7 @@ let input = null; // { label, value, onSubmit } — single-line text prompt in t
 let confirm = null; // { label, onYes }
 let flash = null; // { text, color, until }
 let busy = null; // text shown while a blocking op runs
+let ssel = 0; // selected row in settings
 const remote = {}; // key -> { checking, sha, state } — live PR status from GitHub
 
 function refresh() {
@@ -170,7 +174,7 @@ function renderList(W, H) {
     bar(paint(" PR Review Inbox ", "bold") + paint(`${drafts.length} waiting`, drafts.length ? "yellow" : "gray"), statusRight(), W),
     rule(W),
   ];
-  const foot = [rule(W), footer("↑↓ move  ⏎ open  p post  d discard  o browser  n review a URL  h history  q quit", W)];
+  const foot = [rule(W), footer("↑↓ move  ⏎ open  p post  d discard  o browser  n review a URL  h history  s settings  q quit", W)];
   const bodyH = H - head.length - foot.length;
   const body = [];
 
@@ -256,11 +260,155 @@ function renderHistory(W, H) {
   return [...head, ...shown, ...Array(Math.max(0, bodyH - shown.length)).fill(""), ...foot];
 }
 
+// ---------- settings ----------
+
+/** Rows of the settings screen; rows with `pick` can be selected. */
+function settingsRows(raw) {
+  const rows = [];
+  for (const f of FIELDS) {
+    if (f.section) { rows.push({ section: f.section }); continue; }
+    rows.push({ pick: true, field: f });
+  }
+  rows.push({ section: "Repos" });
+  for (const r of repoList(raw)) rows.push({ pick: true, repo: r });
+  rows.push({ pick: true, add: true });
+  rows.push({ section: "More" });
+  rows.push({ pick: true, file: true });
+  return rows;
+}
+
+function fieldValue(f, v) {
+  if (f.type === "bool") return v ? paint("on ", "green", "bold") + paint(f.on, "gray") : paint("off ", "yellow", "bold") + paint(f.off, "gray");
+  if (f.type === "choice") {
+    const opts = f.options.includes(v) ? f.options : [...f.options, v];
+    return opts.map((o) => (o === v ? paint(` ${o} `, "inv", "cyan") : paint(` ${o} `, "gray"))).join("");
+  }
+  return paint(String(v), "bold");
+}
+
+function repoValue(r) {
+  const mode = r.review === "all" ? paint("every PR", "cyan", "bold") : paint("when asked", "bold");
+  const parts = [mode];
+  if (r.finalWord !== undefined) parts.push(r.finalWord ? "you approve first" : paint("AI posts by itself", "yellow"));
+  if (r.model) parts.push(`model ${r.model}`);
+  return parts.join(paint(" · ", "gray"));
+}
+
+function renderSettings(W, H) {
+  let raw;
+  try { raw = readRaw(); } catch (e) {
+    return [paint(" Settings", "bold"), rule(W), paint(` config.json can't be read: ${e.message}`, "red"),
+      paint(" Press E to fix it in your editor, or ← to go back.", "gray")];
+  }
+  const rows = settingsRows(raw);
+  const picks = rows.filter((r) => r.pick);
+  ssel = Math.max(0, Math.min(ssel, picks.length - 1));
+  const at = picks[ssel];
+  const head = [bar(paint(" Settings ", "bold") + paint(CONFIG_FILE.replace(os.homedir(), "~"), "gray"), statusRight(), W), rule(W)];
+  let keys = "↑↓ move  ⏎ change  ← back";
+  if (at?.field?.type === "choice") keys = "↑↓ move  ⏎/→ next  ← previous" + (at.field.custom ? "  t type a name" : "") + "  esc back";
+  if (at?.repo) keys = "↑↓ move  ⏎ every PR / when asked  f final word  m model  x remove  esc back";
+  const help = at?.field?.help ?? (at?.repo ? "Final word and model here override the global setting for this repo only." : "") ??
+    "";
+  const foot = [rule(W), paint(" " + (help || "Changes are saved straight away. The watcher uses them from its next check."), "gray"), footer(keys + "  E edit file", W)];
+  const bodyH = H - head.length - foot.length;
+  const LW = 26;
+  const body = [];
+  let selLine = 0;
+  for (const r of rows) {
+    if (r.section) { body.push(""); body.push(paint(` ${r.section}`, "bold", "blue")); continue; }
+    const on = r === at;
+    if (on) selLine = body.length;
+    const mark = on ? paint(" ▸ ", "cyan", "bold") : "   ";
+    if (r.field) body.push(mark + fitPlain(r.field.label, LW) + fieldValue(r.field, effective(raw, r.field.key)));
+    else if (r.repo) body.push(mark + fitPlain(r.repo.repo, LW) + repoValue(r.repo));
+    else if (r.add) body.push(mark + paint("+ Add a repo", on ? "bold" : "cyan"));
+    else if (r.file) body.push(mark + paint("Edit config.json in your editor (ignorePaths, instructions, …)", on ? "bold" : "cyan"));
+  }
+  if (!repoList(raw).length) body.splice(body.length - 4, 0, paint("   None yet. Without repos, PRs where you're asked to review still come in.", "gray"));
+  scroll = Math.max(0, Math.min(selLine - Math.floor(bodyH / 2), body.length - bodyH));
+  const shown = body.slice(scroll, scroll + bodyH);
+  return [...head, ...shown, ...Array(Math.max(0, bodyH - shown.length)).fill(""), ...foot];
+}
+
+/** Apply a change to config.json and tell the user. */
+function saveSettings(change, done = "Saved. The watcher uses it from its next check.") {
+  try {
+    const raw = readRaw();
+    change(raw);
+    writeRaw(raw);
+    setFlash(done);
+  } catch (e) {
+    setFlash(`Not saved: ${String(e.message).split("\n")[0]}`, "red", 6000);
+  }
+}
+
+function editConfigFile() {
+  let text;
+  try { text = fs.readFileSync(CONFIG_FILE, "utf8"); } catch { text = "{}\n"; }
+  const edited = editText(text, "json");
+  if (edited === null) return setFlash("No changes.", "gray");
+  try {
+    writeRaw(JSON.parse(edited));
+    setFlash("Saved config.json.");
+  } catch (e) {
+    setFlash(`Not saved, your edit has a problem: ${String(e.message).split("\n")[0]}`, "red", 8000);
+  }
+}
+
+function settingsKey(str, k) {
+  let raw;
+  try { raw = readRaw(); } catch { raw = null; }
+  if (k === "escape" || k === "q" || (k === "left" && !(raw && pickedField(raw)?.type === "choice"))) { view = "list"; scroll = 0; return; }
+  if (str === "E") return editConfigFile();
+  if (!raw) return;
+  const picks = settingsRows(raw).filter((r) => r.pick);
+  const at = picks[ssel];
+  if (k === "up" || k === "k") { ssel = Math.max(0, ssel - 1); return; }
+  if (k === "down" || k === "j") { ssel = Math.min(picks.length - 1, ssel + 1); return; }
+  if (!at) return;
+  const next = k === "return" || k === "space" || k === "right";
+  if (at.field) {
+    const f = at.field, v = effective(raw, f.key);
+    if (f.type === "bool" && (next || k === "left")) saveSettings((c) => setValue(c, f.key, !v));
+    else if (f.type === "choice" && (next || k === "left")) saveSettings((c) => setValue(c, f.key, cycle(f.options, v, k === "left" ? -1 : 1)));
+    else if (f.type === "choice" && f.custom && str === "t") {
+      input = { label: `${f.label}:`, value: String(v), onSubmit: (t) => t.trim() && saveSettings((c) => setValue(c, f.key, t.trim())) };
+    } else if (f.type === "number" && next) {
+      input = { label: `${f.label}:`, value: String(v), onSubmit: (t) => saveSettings((c) => setValue(c, f.key, parseNumber(f, t))) };
+    }
+  } else if (at.repo) {
+    const r = at.repo;
+    if (next) saveSettings((c) => setRepoValue(c, r.repo, "review", r.review === "all" ? "requested" : "all"));
+    else if (str === "f") {
+      const nextFw = r.finalWord === undefined ? true : r.finalWord ? false : undefined;
+      saveSettings((c) => setRepoValue(c, r.repo, "finalWord", nextFw));
+    } else if (str === "m") {
+      const opts = [undefined, ...MODELS];
+      const nextModel = opts[(opts.indexOf(r.model) + 1) % opts.length];
+      saveSettings((c) => setRepoValue(c, r.repo, "model", nextModel), nextModel ? `${r.repo} uses ${nextModel}.` : `${r.repo} uses the global model.`);
+    } else if (str === "x") {
+      confirm = { label: `Stop watching ${paint(r.repo, "bold")}? (It still comes in when you're asked to review, unless "only the repos below" is on.)`,
+        onYes: () => saveSettings((c) => removeRepo(c, r.repo), `Removed ${r.repo}.`) };
+    }
+  } else if (at.add && next) {
+    input = { label: "Repo (owner/repo or URL):", value: "", onSubmit: (t) => {
+      if (!t.trim()) return;
+      saveSettings((c) => addRepo(c, t), "Added. Press ⏎ on it to review every PR, not only ones you're asked to review.");
+    } };
+  } else if (at.file && next) editConfigFile();
+}
+
+function pickedField(raw) {
+  return settingsRows(raw).filter((r) => r.pick)[ssel]?.field;
+}
+
 function render() {
   if (suspended) return;
   const W = out.columns || 80, H = out.rows || 24;
   if (view === "detail" && !cur) view = "list";
-  const lines = view === "detail" ? renderDetail(W, H) : view === "history" ? renderHistory(W, H) : renderList(W, H);
+  const lines = view === "detail" ? renderDetail(W, H) : view === "history" ? renderHistory(W, H)
+    : view === "settings" ? renderSettings(W, H) : renderList(W, H);
   out.write("\x1b[H" + lines.slice(0, H).map((l) => fit(l, W)).join("\r\n") + "\x1b[J");
 }
 
@@ -428,6 +576,7 @@ function onKey(str, key = {}) {
     else if (k === "o" && d) openUrl(d.url);
     else if (k === "n") askNewReview();
     else if (k === "h") { view = "history"; scroll = 0; }
+    else if (k === "s") { view = "settings"; scroll = 0; }
     else if (k === "r") refresh();
   } else if (view === "detail") {
     const d = cur, page = Math.max(1, (out.rows || 24) - 8);
@@ -451,6 +600,8 @@ function onKey(str, key = {}) {
     else if (str === "p") askPost(d);
     else if (str === "d") askDiscard(d);
     else if (str === "o") openUrl(d.url);
+  } else if (view === "settings") {
+    settingsKey(str, k);
   } else if (view === "history") {
     if (k === "escape" || k === "left" || k === "h" || k === "b") { view = "list"; scroll = 0; }
     else if (k === "q") return quit();

@@ -79,6 +79,8 @@ herdr plugin action invoke pr-reviewer.install-cli   # optional: adds the `pr-in
 ```
 
 **2. Pick your repos.** This is optional: with no list, it reviews any PR where you're a requested reviewer.
+Open the inbox and press <kbd>s</kbd> for [Settings](#settings-screen): add repos, pick the model, and turn
+final word on or off there. Or edit the file yourself:
 
 ```sh
 $EDITOR "$(herdr plugin config-dir pr-reviewer)/config.json"
@@ -202,6 +204,7 @@ The top line shows whether the watcher is running and which PR it's reviewing ri
 | <kbd>o</kbd> | open the PR in your browser |
 | <kbd>n</kbd> | review any PR now: paste its link. It runs in the background |
 | <kbd>h</kbd> | history: what was posted, discarded or failed, and why |
+| <kbd>s</kbd> | [settings](#settings-screen): model, final word, repos and more |
 | <kbd>q</kbd> | quit |
 
 </details>
@@ -225,6 +228,30 @@ The top line shows whether the watcher is running and which PR it's reviewing ri
 
 </details>
 
+<a id="settings-screen"></a>
+
+### Settings screen
+
+Press <kbd>s</kbd> in the inbox. Every change is saved to `config.json` straight away, and the watcher
+uses it from its next check. A change that would break the config isn't saved.
+
+| Section | What you can change |
+|---|---|
+| Reviews | final word, **model** (opus, fable, sonnet, haiku, or type any model name), effort, read the whole repo, AI may approve, re-review new commits, skip draft PRs |
+| Watcher | how often to check, reviews at once, which repos, desktop notifications |
+| Repos | add (owner/repo or a GitHub link), remove, every PR or only when asked, and a final word or model for that repo only |
+
+| Key | Does |
+|---|---|
+| <kbd>↑</kbd> <kbd>↓</kbd> | move |
+| <kbd>Enter</kbd> | change: on/off, next option, or type a number |
+| <kbd>→</kbd> / <kbd>←</kbd> | next / previous option (model, effort) |
+| <kbd>t</kbd> | type a model name, e.g. a full one like `claude-opus-5-5` |
+| <kbd>f</kbd> / <kbd>m</kbd> | on a repo: its final word / its model (each press: next value, then back to the global one) |
+| <kbd>x</kbd> | on a repo: remove it (asks first) |
+| <kbd>E</kbd> | open `config.json` in your editor, for everything else (`ignorePaths`, `instructions`, …) |
+| <kbd>Esc</kbd> | back to the inbox |
+
 ### Shortcuts
 
 Add these to `~/.config/herdr/config.toml`, then run `herdr server reload-config`. `prefix` is <kbd>Ctrl</kbd>+<kbd>b</kbd> unless you changed it.
@@ -247,7 +274,7 @@ description = "PR review watcher"
 
 ## Settings
 
-All of these go in `config.json`. Any of them can also go on one repo, like `{ "repo": "…", "finalWord": false }`.
+All of these go in `config.json`, and the common ones can be changed in the inbox with <kbd>s</kbd> ([Settings screen](#settings-screen)). Any of them can also go on one repo, like `{ "repo": "…", "finalWord": false }`.
 
 <details open>
 <summary><b>What to review</b></summary>

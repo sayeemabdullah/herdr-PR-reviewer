@@ -107,7 +107,7 @@ export function isAlive(pid) {
 
 // ---------- config ----------
 
-const DEFAULTS = {
+export const DEFAULTS = {
   repos: [], // per-repo settings, e.g. { "repo": "o/r", "review": "all", "finalWord": false }
   review: "requested", // "requested" = only PRs you're added to as reviewer; "all" = every open PR (set per repo)
   onlyListedRepos: false, // false = any repo where you're a requested reviewer; true = only repos in `repos`
