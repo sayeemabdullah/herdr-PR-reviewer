@@ -7,12 +7,7 @@
 **Claude reviews the pull requests you're asked to review.**<br>
 **You read each review in an inbox and press _post_, or let it post on its own.**
 
-[![CI](https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/ci.yml/badge.svg)](https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/ci.yml)
-[![herdr marketplace](https://img.shields.io/badge/herdr-marketplace-111)](https://herdr.dev/plugins/)
-[![herdr ≥ 0.8](https://img.shields.io/badge/herdr-%E2%89%A5%200.8-111)](https://herdr.dev)
-[![Node ≥ 22](https://img.shields.io/badge/node-%E2%89%A5%2022-339933?logo=node.js&logoColor=white)](https://nodejs.org)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-restricted%20mode-D97757)](https://claude.com/claude-code)
-[![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+<p><a href="https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/sayeemabdullah/herdr-PR-reviewer/ci.yml?branch=master&style=flat-square&label=CI"></a> <a href="https://herdr.dev/plugins/"><img alt="herdr plugin, 0.8 or newer" src="https://img.shields.io/badge/herdr%20plugin-%E2%89%A5%200.8-222?style=flat-square"></a> <a href="https://nodejs.org"><img alt="Node 22 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022-339933?style=flat-square&logo=node.js&logoColor=white"></a> <a href="https://claude.com/claude-code"><img alt="Claude Code, restricted mode" src="https://img.shields.io/badge/Claude%20Code-restricted-D97757?style=flat-square"></a> <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-0969da?style=flat-square"></a></p>
 
 [Quick start](#quick-start) · [How it works](#how-it-works) · [The inbox](#inbox) · [Settings](#settings) · [Safety](#safety) · [Contributing](CONTRIBUTING.md)
 
