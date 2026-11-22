@@ -16,7 +16,7 @@ if (process.argv.includes("--draft")) {
   cfg.finalWord = true;
   cfg.repos = cfg.repos.map((r) => ({ ...r, finalWord: true }));
 }
-const res = reviewPR(cfg, target.repo, target.number, { force: true, dryRun });
+const res = await reviewPR(cfg, target.repo, target.number, { force: true, dryRun });
 if (res.skipped) console.log(`skipped: ${res.skipped}`);
 else if (dryRun) console.log(JSON.stringify(res.draft, null, 2));
 else console.log(`${res.status}: ${res.event ?? res.draft.verdict}`);

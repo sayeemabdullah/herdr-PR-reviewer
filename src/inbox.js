@@ -346,7 +346,8 @@ function askPost(d) {
         try {
           const event = postReview(d, settingsFor(loadConfig(), d.repo));
           deleteDraft(d.key);
-          markReviewed(d.key, { sha: d.headSha, status: "posted", event });
+          markReviewed(d.key, { sha: d.headSha, status: "posted", event, error: null,
+            lastReview: { verdict: d.verdict, summary: d.summary, comments: included(d) } });
           setFlash(`✓ Posted ${d.repo}#${d.number} as ${event}`);
           view = "list";
         } catch (e) {

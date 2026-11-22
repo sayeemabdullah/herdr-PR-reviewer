@@ -1,6 +1,8 @@
 // Action entrypoint: open (or focus, if already running) one of the plugin's panes.
 import fs from "node:fs";
-import { HERDR, PLUGIN_ID, WATCHER_FILE, isAlive, run } from "./lib.js";
+import { HERDR, PLUGIN_ID, WATCHER_FILE, isAlive, run, writeLauncher } from "./lib.js";
+
+writeLauncher();
 
 const entry = process.argv[2] ?? "watcher";
 const focus = !process.argv.includes("--no-focus");
