@@ -95,6 +95,7 @@ test("default agent commands are locked down", () => {
   for (const c of [command, codeCommand]) {
     assert.ok(c.includes("--restricted"), "no shell / code-running tools, no user settings");
     assert.ok(c.includes("--strict-mcp-config"), "none of the user's MCP servers");
+    assert.ok(c.includes("--safe-mode"), "no CLAUDE.md from the PR, no hooks, skills or plugins");
   }
   assert.equal(codeCommand[codeCommand.indexOf("--tools") + 1], "Read,Grep,Glob");
   assert.equal(command[command.indexOf("--tools") + 1], "");
