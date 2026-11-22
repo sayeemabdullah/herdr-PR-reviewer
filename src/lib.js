@@ -133,9 +133,11 @@ const DEFAULTS = {
   agent: {
     // --restricted: no Bash/code-running tools, ignores your settings files, file tools confined to the
     // working directory. --strict-mcp-config: none of your MCP servers (Gmail, Drive…) are loaded.
+    // --safe-mode: no CLAUDE.md (a PR could add one with instructions), hooks, skills or plugins.
     // `command` is used when the AI only gets the diff; `codeCommand` when it can read the checkout.
-    command: ["claude", "-p", "--restricted", "--strict-mcp-config", "--tools", "", "--output-format", "text"],
-    codeCommand: ["claude", "-p", "--restricted", "--strict-mcp-config", "--tools", "Read,Grep,Glob",
+    command: ["claude", "-p", "--restricted", "--strict-mcp-config", "--safe-mode", "--tools", "",
+      "--output-format", "text"],
+    codeCommand: ["claude", "-p", "--restricted", "--strict-mcp-config", "--safe-mode", "--tools", "Read,Grep,Glob",
       "--output-format", "text"],
     timeoutSeconds: 900,
   },

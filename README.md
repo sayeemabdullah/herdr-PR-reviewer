@@ -285,7 +285,7 @@ All of these go in `config.json`. Any of them can also go on one repo, like `{ "
 
 | Setting | Default | What it does |
 |---|---|---|
-| `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --tools Read,Grep,Glob` | runs inside the checkout when `readCode` is on |
+| `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --safe-mode --tools Read,Grep,Glob` | runs inside the checkout when `readCode` is on |
 | `agent.command` | the same with `--tools ""` | diff-only reviews |
 | `agent.timeoutSeconds` | `900` | how long one review may take |
 
@@ -309,6 +309,7 @@ The AI is told to treat the PR, its comments and the repo's files as **untrusted
 |---|---|
 | `--restricted` | no shell or other code-running tools, and none of your Claude settings are loaded |
 | `--strict-mcp-config` | none of your MCP servers (mail, drive, …) are available |
+| `--safe-mode` | no `CLAUDE.md`, hooks, skills or plugins, so a PR can't add a `CLAUDE.md` with instructions for the reviewer |
 | read-only tools | it can only **read** files, and only inside the PR's checkout |
 
 The checkout lives in the plugin's state folder (`repos/`, `worktrees/`), never in your own clones, and each review's checkout is removed afterwards. Reviews are posted as **you**, with a note saying they're AI-assisted.
