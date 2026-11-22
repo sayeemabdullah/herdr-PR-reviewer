@@ -10,7 +10,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-test-"));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
 const lib = await import("../src/lib.js");
-const { buildPrompt, commentableLines, diffBetween, filterDiff, globToRegex, loadConfig, prepareCheckout } = lib;
+const { buildPrompt, commentableLines, diffBetween, filterDiff, globToRegex, loadConfig, numberDiff, prepareCheckout } = lib;
 
 const DIFF = `diff --git a/src/app.js b/src/app.js
 index 1..2 100644
@@ -55,6 +55,19 @@ test("ignorePaths drops lockfiles and build output from the diff, and says which
 
 test("inline comments are only allowed on lines that are in the diff", () => {
   assert.deepEqual([...commentableLines(DIFF).get("src/app.js")], [1, 2, 3, 4]);
+});
+
+test("each diff line carries its line number in the new file, so the AI copies it instead of counting", () => {
+  const out = numberDiff(DIFF).split("\n");
+  assert.equal(out[4], "@@ -1,3 +1,4 @@", "headers stay as they are");
+  assert.deepEqual(out.slice(5, 10), ["1\t one", "\t-two", "2\t+TWO", "3\t+three", "4\t four"]);
+  assert.equal(out[15], "1\t+{\"a\":2}", "numbering starts again in each file");
+});
+
+test("prompt: the diff is numbered and the AI is told to use those numbers", () => {
+  const p = buildPrompt(PR, loadConfig(), { diff: DIFF });
+  assert.match(p, /\n3\t\+three\n/);
+  assert.match(p, /starts with its line number/);
 });
 
 const PR = {
