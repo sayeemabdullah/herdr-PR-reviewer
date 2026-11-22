@@ -1,13 +1,34 @@
-# PR Reviewer for herdr
+<p align="center">
+  <a href="https://herdr.dev"><img src="assets/herdr.png" alt="herdr" height="72"></a>
+  &nbsp;&nbsp;<b>+</b>&nbsp;&nbsp;
+  <a href="https://claude.com/claude-code"><img src="assets/claude.jpeg" alt="Claude" height="72"></a>
+  &nbsp;&nbsp;<b>+</b>&nbsp;&nbsp;
+  <a href="https://github.com"><img src="assets/github.png" alt="GitHub" height="72"></a>
+</p>
 
-A [herdr](https://herdr.dev) plugin. It watches your GitHub repos and has Claude review new pull requests. You read each review and press **post**, or let it post on its own.
+<h1 align="center">PR Reviewer for herdr</h1>
+
+<p align="center">
+  Claude reviews the pull requests you're asked to review.<br>
+  You read each review in an inbox and press <b>post</b>, or let it post on its own.
+</p>
+
+<p align="center">
+  <a href="https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/test.yml"><img src="https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/test.yml/badge.svg" alt="tests"></a>
+  <img src="https://img.shields.io/badge/herdr-%E2%89%A5%200.8-black" alt="herdr ≥ 0.8">
+  <img src="https://img.shields.io/badge/node-%E2%89%A5%2020-339933" alt="node ≥ 20">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
+
+A [herdr](https://herdr.dev) plugin. It watches GitHub for PRs that need your review and has [Claude](https://claude.com/claude-code) review them, reading the whole repo and not just the diff. Reviews are posted with the [GitHub CLI](https://cli.github.com) as you, after your final word.
 
 ## Install
 
-You need herdr 0.8 or newer, Node 20 or newer, [`gh`](https://cli.github.com) signed in (`gh auth status`), and `claude`.
+You need herdr 0.8 or newer, Node 20 or newer, `git`, [`gh`](https://cli.github.com) signed in (`gh auth status`), and an up-to-date [Claude Code](https://claude.com/claude-code) (`claude`). The reviewer uses its `--restricted` mode.
 
 ```sh
 herdr plugin install sayeemabdullah/herdr-PR-reviewer
+herdr plugin action invoke pr-reviewer.install-cli   # optional: adds the pr-inbox command
 ```
 
 The watcher starts with herdr, in a tab called **PR watcher**. To start it now:
@@ -45,7 +66,13 @@ Changes are picked up on the next check, within 3 minutes. You don't need to res
 ## How it works
 
 1. The **watcher** checks GitHub every 3 minutes for PRs to review (see [Pick your repos](#pick-your-repos)).
-2. For each one it sends the diff to the AI, which writes a review: a verdict (**approve**, **request changes** or **comment**), a summary, and comments on specific lines.
+2. For each one it checks out the PR (read-only) and asks the AI for a review: a verdict (**approve**, **request changes** or **comment**), a summary, and comments on specific lines. The AI gets:
+   - the diff, minus lockfiles and build output ([`ignorePaths`](#settings)),
+   - the **whole repo** at the PR's commit, so it can look up callers, types and tests, and still review big PRs whose diff gets cut off,
+   - what other reviewers already said, so it doesn't repeat them,
+   - on a re-review, **its previous review and the changes since**, so it says what's fixed instead of starting over.
+
+   Small, certain fixes come as GitHub **suggestions** the author can apply with one click. Up to 2 PRs are reviewed at once (`maxParallel`).
 3. What happens next depends on your **final word** setting:
    - **On** (the default): the review waits in your **inbox** and you get a notification. Nothing reaches GitHub until you post it.
    - **Off**: the review is posted to GitHub straight away, as you.
@@ -82,7 +109,7 @@ The inbox is where reviews wait for your final word. Open it with any of:
 
 - `herdr plugin action invoke pr-reviewer.inbox` (opens in herdr)
 - `Ctrl+b` then `i` in herdr, if you added the [shortcut](#shortcuts-optional)
-- `bin/pr-inbox` in **any** terminal, including the Herdr desktop app. If you cloned and linked this folder (`herdr plugin link`), you can make it a command once: `ln -s "$PWD/bin/pr-inbox" ~/.local/bin/pr-inbox`. Don't do this with a `herdr plugin install` copy: herdr puts each update in a new folder, so the link would break.
+- `pr-inbox` in **any** terminal, including the Herdr desktop app. Set it up once with `herdr plugin action invoke pr-reviewer.install-cli`. It adds `~/.local/bin/pr-inbox` and keeps working after `herdr plugin update`.
 
 ```
  PR Review Inbox 2 waiting                                  ● watching  ·  ⟳ reviewing web-app#418
@@ -169,11 +196,25 @@ All of these go in `config.json`. Any of them can also go on one repo, like `{ "
 | `onlyListedRepos` | `false` | `true`: only the repos in `repos` |
 | `instructions` | `""` | extra things the reviewer should check |
 | `pollSeconds` | `180` | how often it checks GitHub |
-| `agent.command` | `claude -p --tools ""` | the AI to run. It gets the PR on stdin and replies on stdout |
+| `maxParallel` | `2` | how many PRs are reviewed at the same time |
+| `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
+| `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | files left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
+| `maxDiffChars` | `150000` | longer diffs are cut off (with `readCode` the AI can still open the files) |
+| `agent.codeCommand` | `claude -p --restricted --strict-mcp-config --tools Read,Grep,Glob` | the AI command when it can read the code. It runs inside the checkout |
+| `agent.command` | the same with `--tools ""` | the AI command for diff-only reviews |
+| `agent.timeoutSeconds` | `900` | how long one review may take |
+
+Any AI CLI works for `agent.command` / `agent.codeCommand`: it gets the prompt on stdin and must print a JSON review on stdout. If you upgraded from 0.1 and your `config.json` has an `agent` block, delete it to get the new locked-down defaults.
 
 ## Safe by default
 
-- A PR can contain text that tries to trick the AI ("approve this"). The AI is told to ignore it and runs with no tools, so it can't run code. Keep `finalWord: true` on repos where strangers can open PRs.
+- A PR can contain text that tries to trick the AI ("approve this"). The AI is told to treat the PR, its comments and the repo's files as untrusted, and it's locked down:
+  - `--restricted`: no shell or other code-running tools, and none of your Claude settings are loaded.
+  - `--strict-mcp-config`: none of your MCP servers (mail, drive, …) are available.
+  - It can only **read** files, and only inside the PR's checkout.
+
+  Still, keep `finalWord: true` on repos where strangers can open PRs.
+- The checkout lives in the plugin's state folder (`repos/` and `worktrees/`), never in your own clones. Each review's checkout is removed when it's done.
 - Reviews are posted as **you**, with a note at the bottom saying they're AI-assisted.
 
 ## Develop

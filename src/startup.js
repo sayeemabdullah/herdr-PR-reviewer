@@ -1,6 +1,8 @@
 // Startup hook: start the watcher in the background tab if configured.
 import { spawnSync } from "node:child_process";
-import { CONFIG_FILE, loadConfig, notify } from "./lib.js";
+import { CONFIG_FILE, loadConfig, notify, writeLauncher } from "./lib.js";
+
+writeLauncher();
 
 const cfg = loadConfig();
 if (cfg.missing) {
