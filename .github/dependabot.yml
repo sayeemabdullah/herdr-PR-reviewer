@@ -1,0 +1,10 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci # PR titles come out as "ci(deps): …", which passes the PR title check
+      include: scope
+    labels: [dependencies]

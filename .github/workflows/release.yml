@@ -1,0 +1,35 @@
+name: Release
+
+# Push a tag like v0.2.0 (matching herdr-plugin.toml) to publish a GitHub release
+# whose notes are that version's section of CHANGELOG.md.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag matches the manifest version
+        run: |
+          manifest=$(sed -n 's/^version = "\(.*\)"/\1/p' herdr-plugin.toml)
+          [ "v$manifest" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME but herdr-plugin.toml says $manifest"; exit 1; }
+
+      - name: Release notes from CHANGELOG
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="## $v" '$0==v{on=1;next} /^## /{on=0} on' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "::error::no '## $v' section in CHANGELOG.md"; exit 1; }
+          cat notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag

@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR cancels the older run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Syntax check
+        run: for f in src/*.js test/*.js; do node --check "$f"; done
+
+      - name: Unit tests (incl. herdr manifest rules)
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          node --test --test-reporter=spec
+
+      - name: Smoke test — inbox starts without a terminal
+        run: |
+          export HERDR_PLUGIN_CONFIG_DIR="$RUNNER_TEMP/cfg" HERDR_PLUGIN_STATE_DIR="$RUNNER_TEMP/state"
+          node src/inbox.js < /dev/null | tee out.txt
+          grep -q "PR Review Inbox" out.txt
+
+      - name: Smoke test — review CLI rejects a bad URL
+        run: |
+          set +e
+          HERDR_PLUGIN_CONFIG_DIR="$RUNNER_TEMP/cfg2" node src/review.js not-a-url
+          test $? -eq 2
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck the launcher
+        run: shellcheck bin/*
+
+      - name: Manifest version matches CHANGELOG
+        run: |
+          manifest=$(sed -n 's/^version = "\(.*\)"/\1/p' herdr-plugin.toml)
+          echo "herdr-plugin.toml version: $manifest"
+          if [ -f CHANGELOG.md ]; then
+            changelog=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | cut -c4-)
+            echo "CHANGELOG.md top entry:   $changelog"
+            [ "$manifest" = "$changelog" ] || { echo "::error file=herdr-plugin.toml::version $manifest has no '## $manifest' entry at the top of CHANGELOG.md"; exit 1; }
+          fi
+
+      - name: README links to files that exist
+        run: |
+          status=0
+          for f in $(grep -oE '\]\(([^)#:]+)\)|src="([^"#:]+)"' README.md | sed -E 's/^\]\(//; s/\)$//; s/^src="//; s/"$//' | sort -u); do
+            [ -e "$f" ] || { echo "::error file=README.md::links to missing file: $f"; status=1; }
+          done
+          exit $status
+
+      - name: No private repo names or secrets committed
+        run: |
+          if git grep -nIE '(gh[pousr]_[A-Za-z0-9]{30,}|sk-ant-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16})'; then
+            echo "::error::looks like a secret was committed"; exit 1
+          fi
+
+  # The one check the branch rule requires, so matrix changes never need a rule change.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All CI jobs passed
+        run: |
+          echo "test: ${{ needs.test.result }}  lint: ${{ needs.lint.result }}"
+          [ "${{ needs.test.result }}" = success ] && [ "${{ needs.lint.result }}" = success ]
