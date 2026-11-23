@@ -151,7 +151,7 @@ export function isAlive(pid) {
 export const DEFAULTS = {
   repos: [], // per-repo settings, e.g. { "repo": "o/r", "review": "all", "finalWord": false }
   review: "requested", // "requested" = only PRs you're added to as reviewer; "all" = every open PR (set per repo)
-  onlyListedRepos: false, // false = any repo where you're a requested reviewer; true = only repos in `repos`
+  onlyListedRepos: true, // true = only the repos in `repos` are reviewed; false = also any repo where you're a requested reviewer
   ignoreRepos: [], // repos never to review, e.g. ["my-org/secret-repo"]
   desktopNotifications: true, // macOS notification in addition to herdr's own
   finalWord: true, // true = AI drafts, you approve in the inbox; false = AI posts directly

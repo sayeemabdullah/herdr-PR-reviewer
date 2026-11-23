@@ -14,7 +14,7 @@ import {
   parsePRUrl, postReview, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
 import {
-  FIELDS, MODELS, addRepo, cycle, effective, parseNumber, parseRepo, readRaw, removeRepo, repoList,
+  FIELDS, MODELS, addRepo, cycle, effective, listText, parseList, parseNumber, parseRepo, readRaw, removeRepo, repoList,
   setRepoValue, setValue, writeRaw,
 } from "./settings.js";
 
@@ -234,6 +234,11 @@ function renderInbox(W, H) {
     body.push(`    ${paint("n", "cyan", "bold")}  review any PR now, from its link`);
     body.push(`    ${paint("r", "cyan", "bold")}  choose which repos are watched`);
     body.push(`    ${paint("s", "cyan", "bold")}  model, final word and other settings`);
+    const { raw: rawNow } = readRawSafe();
+    if (rawNow && effective(rawNow, "onlyListedRepos") && repoList(rawNow).length === 0) {
+      body.push("", paint("    No repos are being watched yet.", "yellow", "bold"));
+      body.push(paint("    Press r, then a, to add the repos you want reviewed.", "yellow"));
+    }
     if (!watcherRunning()) {
       body.push("", paint("    The watcher isn't running, so nothing new will arrive.", "yellow", "bold"));
       body.push(paint("    Start it in herdr with Ctrl+b Shift+i, or: herdr plugin action invoke pr-reviewer.watch", "yellow"));
@@ -487,7 +492,7 @@ function reposKey(str, k) {
 
 // ---------- Settings ----------
 
-const SETTING_FIELDS = FIELDS.filter((f) => f.key !== "onlyListedRepos"); // that one lives in the Repos tab
+const SETTING_FIELDS = FIELDS; // "Which repos" is also in the Repos tab, as "Other repos"
 
 function settingsRows() {
   const rows = [];
@@ -496,7 +501,9 @@ function settingsRows() {
   return rows;
 }
 
-function fieldValue(f, v) {
+function fieldValue(f, v, room = 60) {
+  if (f.type === "list") { const t = listText(v); return t ? paint(fitPlain(t, room), "bold") : paint("(none)", "gray"); }
+  if (f.type === "text") { const t = listText(v); return t ? paint(fitPlain(t, room), "bold") : paint("(none)", "gray"); }
   if (f.type === "bool") return v ? paint("on  ", "green", "bold") + paint(f.on, "gray") : paint("off ", "yellow", "bold") + paint(f.off, "gray");
   if (f.type === "choice") {
     const opts = f.options.includes(v) ? f.options : [...f.options, v];
@@ -517,6 +524,8 @@ function renderSettings(W, H) {
   const pairs = !f ? [["⏎", "open in editor"], ...GLOBAL_KEYS]
     : f.type === "choice" ? [["←→", "change"], ...(f.custom ? [["t", "type a name"]] : []), ["E", "edit file"], ...GLOBAL_KEYS]
     : f.type === "number" ? [["⏎", "type a number"], ["E", "edit file"], ...GLOBAL_KEYS]
+    : f.type === "list" ? [["⏎", "edit the list"], ["E", "edit file"], ...GLOBAL_KEYS]
+    : f.type === "text" ? [["⏎", "type text"], ["E", "edit file"], ...GLOBAL_KEYS]
     : [["⏎", "turn on/off"], ["E", "edit file"], ...GLOBAL_KEYS];
   const tip = f?.help ?? (f ? "Saved straight away. The watcher uses it from its next check." : CONFIG_FILE.replace(os.homedir(), "~"));
   const foot = bottom(pairs, tip, W);
@@ -529,7 +538,7 @@ function renderSettings(W, H) {
     const on = r === at;
     if (on) selLine = body.length;
     const mark = on ? paint(" ▸  ", "cyan", "bold") : "    ";
-    if (r.field) body.push(mark + (on ? paint(fitPlain(r.field.label, LW), "bold") : fitPlain(r.field.label, LW)) + fieldValue(r.field, effective(raw, r.field.key)));
+    if (r.field) body.push(mark + (on ? paint(fitPlain(r.field.label, LW), "bold") : fitPlain(r.field.label, LW)) + fieldValue(r.field, effective(raw, r.field.key), Math.max(10, W - LW - 8)));
     else body.push(mark + paint("Edit config.json in your editor", "cyan", "bold") + paint("  ignore paths, instructions, footer…", "gray"));
   }
   scroll = Math.max(0, Math.min(selLine - Math.floor(bodyH / 2), body.length - bodyH));
@@ -553,6 +562,13 @@ function settingsKey(str, k) {
     saveSettings((c) => setValue(c, f.key, nv), `${f.label}: ${nv}.`);
   } else if (f.type === "choice" && f.custom && str === "t") {
     input = { label: `${f.label}:`, value: String(v), onSubmit: (t) => t.trim() && saveSettings((c) => setValue(c, f.key, t.trim()), `${f.label}: ${t.trim()}.`) };
+  } else if ((f.type === "list" || f.type === "text") && go) {
+    const hint = f.type === "list" ? "comma separated   ⏎ save  esc cancel" : "⏎ save  esc cancel";
+    input = { label: `${f.label}:`, value: listText(v), hint,
+      onSubmit: (t) => {
+        const nv = f.type === "list" ? parseList(f, t) : t.trim();
+        saveSettings((c) => setValue(c, f.key, nv), `${f.label}: ${listText(nv) || "(none)"}.`);
+      } };
   } else if (f.type === "number" && go) {
     input = { label: `${f.label}:`, value: String(v), hint: `${f.min} to ${f.max}   ⏎ save  esc cancel`,
       onSubmit: (t) => saveSettings((c) => setValue(c, f.key, parseNumber(f, t)), `${f.label}: ${t.trim()}.`) };

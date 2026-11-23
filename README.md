@@ -78,7 +78,7 @@ herdr plugin install sayeemabdullah/herdr-PR-reviewer
 herdr plugin action invoke pr-reviewer.install-cli   # optional: adds the `pr-panel` command
 ```
 
-**2. Pick your repos.** This is optional: with no list, it reviews any PR where you're a requested reviewer.
+**2. Pick your repos.** Only the repos you list are reviewed. A PR you're asked to review in any other repo (a work repo, say) is ignored, unless you change that in Settings → **Which repos**.
 Open [PR Panel](#panel) and go to the **Repos** tab (<kbd>r</kbd>): press <kbd>a</kbd> and pick from your
 GitHub repos. The model and final word are in the **Settings** tab (<kbd>s</kbd>). Or edit the file yourself:
 
@@ -187,7 +187,7 @@ right now, and <kbd>?</kbd> shows all of them.
 |---|---|
 | **Inbox** | AI reviews waiting for your final word: read, change, post or discard them |
 | **Repos** | which repos are watched. Add one by picking from your GitHub repos, remove one with <kbd>x</kbd> |
-| **Settings** | model, effort, final word, how often to check, and the rest |
+| **Settings** | model and effort, final word, cheaper model for small PRs, big-PR limits, repos and authors to skip, how often to check, and more |
 | **History** | what was posted, discarded or failed, how long each review took, and why |
 
 Open it with any of:
@@ -269,7 +269,7 @@ can be typed as `owner/repo` or pasted as a link. Then choose **every PR** or **
 | <kbd>f</kbd> | final word for this repo only: you approve / the AI posts / back to the global setting |
 | <kbd>m</kbd> | model for this repo only: each press picks the next one, then back to the global model |
 
-Under **Other repos**, choose whether PRs you're asked to review in repos that aren't listed are reviewed too.
+Under **Other repos**, choose whether PRs you're asked to review in repos that aren't listed are reviewed too. They're **ignored** by default, so a repo you never added isn't reviewed by surprise. The same switch is in Settings as **Which repos**.
 
 <a id="settings-screen"></a>
 
@@ -280,8 +280,12 @@ A change that would break the config isn't saved, and the panel tells you why.
 
 | Section | What you can change |
 |---|---|
-| Reviews | final word, **model** (opus, fable, sonnet, haiku, or type any model name), effort, read the whole repo, AI may approve, re-review new commits, skip draft PRs |
-| Watcher | how often to check, reviews at once, desktop notifications |
+| Reviews | final word, **model** (opus, fable, sonnet, haiku, or type any model name), effort, read the whole repo, AI may approve, which comments to show, repo rules, resolve fixed comments, re-review new commits, skip draft PRs, your own instructions |
+| Smarter model | cheaper model for small or docs-only PRs: the model and effort, what counts as small, and the risky and docs path lists |
+| Big PRs and diffs | review in parts, the diff limit, most parts, paths left out of the diff, the time limit per review |
+| Watcher | **which repos** (only the ones you listed, or any you're asked on), repos never to review, authors to skip (bots), how often to check, reviews at once, start with herdr, desktop notifications |
+
+A list (repos to skip, risky paths, …) is typed as comma separated text: press <kbd>Enter</kbd>, edit, <kbd>Enter</kbd> again.
 
 | Key | Does |
 |---|---|
@@ -321,7 +325,7 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 | Setting | Default | What it does |
 |---|---|---|
 | `review` | `"requested"` | `"all"` or `"requested"`, see [Quick start](#quick-start) |
-| `onlyListedRepos` | `false` | `true`: only the repos in `repos` |
+| `onlyListedRepos` | `true` | `true`: only the repos in `repos` are reviewed. `false`: also any repo where you're asked to review |
 | `ignoreRepos` | `[]` | repos that are never sent to the AI |
 | `ignoreAuthors` | bots | PR authors to skip |
 | `skipDrafts` | `true` | leave draft PRs alone |

@@ -11,7 +11,7 @@ try {
 
 const cfg = loadConfig();
 if (cfg.missing) {
-  notify("PR Reviewer not configured", `Add repos to ${CONFIG_FILE}`, "none");
+  notify("PR Reviewer: no repos yet", "Open PR Panel, go to Repos (r) and press a to add one", "none");
 } else if (cfg.autoStartWatcher) {
   spawnSync(process.execPath, [new URL("./open-pane.js", import.meta.url).pathname, "watcher", "--no-focus"], {
     stdio: "inherit",

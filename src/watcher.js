@@ -58,7 +58,7 @@ while (true) {
     continue;
   }
   if (cfg.missing) {
-    log(`onlyListedRepos is on but no repos are listed in ${CONFIG_FILE}`);
+    log("No repos to watch yet. Open PR Panel, go to Repos (r) and press a to add one.");
     await sleep(30_000);
     continue;
   }
