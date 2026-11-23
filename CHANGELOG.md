@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Smarter model choice (opt-in).** With `"smartModel": true`, docs-only PRs and small ones (at most 3 files and 60 lines)
+  are reviewed by a cheaper model (`cheapModel`, default Sonnet at medium effort). Big PRs, and any PR that touches a risky path
+  (auth, security, migrations, SQL, workflows, `package.json`, secrets...), keep your model and effort. The inbox header says which
+  model reviewed and why. Also in the Settings tab.
+
 ## 0.4.0
 
 - **`pr-panel doctor`.** Runs a tiny review (a one-line PR with a planted bug) on Claude Code and says what to fix if it

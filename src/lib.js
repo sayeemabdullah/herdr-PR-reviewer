@@ -165,6 +165,17 @@ export const DEFAULTS = {
   // settings, including your chosen model, so without these reviews fall back to the default model.
   model: "opus",
   effort: "high",
+  // Smarter model choice (off by default): a cheaper model for small or docs-only PRs, your model/effort for the rest.
+  // A PR that touches a riskyPaths file always gets your model and effort, however small.
+  smartModel: false,
+  cheapModel: "sonnet",
+  cheapEffort: "medium",
+  smallMaxLines: 60, // added + removed lines
+  smallMaxFiles: 3,
+  docsPaths: ["**/*.md", "**/*.mdx", "**/*.rst", "**/*.txt", "docs/**", "**/LICENSE*", "**/CHANGELOG*"],
+  riskyPaths: ["**/auth/**", "**/*auth*", "**/security/**", "**/crypto/**", "**/*secret*", "**/*password*", "**/*token*",
+    "**/payment*/**", "**/billing/**", "**/migrations/**", "**/*.sql", ".github/workflows/**", "**/Dockerfile*",
+    "**/*.tf", "**/package.json", "**/*.pem", "**/.env*"],
   maxDiffChars: 150000,
   readCode: true, // check out the PR so the AI can read the whole repo (read-only), not just the diff
   ignorePaths: [ // left out of the diff the AI sees (it can still open them when readCode is on)
@@ -747,6 +758,24 @@ export function agentArgv(command, settings) {
   return argv;
 }
 
+/**
+ * Which model and effort should review this PR. With `smartModel` off it is always your model and effort.
+ * With it on: any riskyPaths file, or a big PR -> your model; docs only, or small -> the cheap one.
+ * Returns { model, effort, tier, why }. `files`: the changed paths; `pr`: { additions, deletions }.
+ */
+export function pickModel(settings, pr, files) {
+  const main = { model: settings.model, effort: settings.effort, tier: "main" };
+  if (!settings.smartModel) return { ...main, why: "" };
+  const match = (patterns) => { const res = patterns.map(globToRegex); return files.filter((f) => res.some((r) => r.test(f))); };
+  const risky = match(settings.riskyPaths ?? []);
+  if (risky.length) return { ...main, why: `touches ${risky[0]}` };
+  const cheap = { model: settings.cheapModel, effort: settings.cheapEffort, tier: "cheap" };
+  if (files.length && match(settings.docsPaths ?? []).length === files.length) return { ...cheap, why: "docs only" };
+  const lines = (pr.additions ?? 0) + (pr.deletions ?? 0);
+  if (files.length <= settings.smallMaxFiles && lines <= settings.smallMaxLines) return { ...cheap, why: `small: ${files.length} file${files.length === 1 ? "" : "s"}, ${lines} lines` };
+  return { ...main, why: `big: ${files.length} files, ${lines} lines` };
+}
+
 const cut = (s, n) => (s.length > n ? s.slice(0, n) + "\n... [truncated]" : s);
 
 /**
@@ -901,7 +930,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       }
     }
 
-    let review, seconds = null, prevPosted = [];
+    let review, seconds = null, prevPosted = [], picked = null;
     try {
       // Follow-up review: what we said last time + what changed since.
       const prevState = getReviewed()[key];
@@ -919,7 +948,11 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       const rules = settings.repoRules ? repoReviewRules(repo, pr.baseRefName) : "";
       if (rules) log(`  following REVIEW.md from ${pr.baseRefName}`);
 
-      const [cmd, ...args] = agentArgv(checkout ? settings.agent.codeCommand : settings.agent.command, settings);
+      const pick = pickModel(settings, pr, diffFiles(fullDiff));
+      picked = pick;
+      if (settings.smartModel) log(`  model: ${pick.model} at ${pick.effort} effort (${pick.why})`);
+      const [cmd, ...args] = agentArgv(checkout ? settings.agent.codeCommand : settings.agent.command,
+        { ...settings, model: pick.model, effort: pick.effort });
 
       // One AI run on one piece of the diff.
       const runPass = async (ctx) => {
@@ -970,6 +1003,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       : [];
     const draft = {
       key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid, seconds,
+      ...(settings.smartModel && picked ? { model: picked.model, effort: picked.effort, modelWhy: picked.why } : {}),
       verdict: review.verdict, summary: review.summary, comments: ok, ...(fixed.length ? { fixed } : {}), createdAt: new Date().toISOString(),
     };
 
