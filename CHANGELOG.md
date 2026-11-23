@@ -1,11 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - **Smarter model choice (opt-in).** With `"smartModel": true`, docs-only PRs and small ones (at most 3 files and 60 lines)
   are reviewed by a cheaper model (`cheapModel`, default Sonnet at medium effort). Big PRs, and any PR that touches a risky path
   (auth, security, migrations, SQL, workflows, `package.json`, secrets...), keep your model and effort. The inbox header says which
   model reviewed and why. Also in the Settings tab.
+- **Security policy.** `SECURITY.md` says how to report a problem privately and what counts as one.
+- **README brought up to date** with 0.4.0: big PRs are reviewed in parts, `REVIEW.md`, `pr-panel doctor`, and the inbox keys.
 
 ## 0.4.0
 
