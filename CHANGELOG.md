@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Big PRs are reviewed in parts.** A diff over `maxDiffChars` used to be cut off. Now it is split into passes of whole
+  files (at most `maxParts`, default 4), each reviewed on its own and merged: strictest verdict, all comments, each
+  part's summary. Off with `"splitLarge": false`. Each part is a full AI run, so a big PR costs that many reviews.
 - **How long each review took.** History has a TOOK column and the inbox header says "in 42s".
 - **Severity on every comment.** The AI marks each comment `blocker`, `important` or `nit`. The inbox lists blockers first
   and tags them, posted comments say `**blocker:**` or `**nit:**`, and the new `minSeverity` setting (also in the Settings tab)
