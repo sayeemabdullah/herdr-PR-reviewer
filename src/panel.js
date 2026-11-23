@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import {
-  CONFIG_FILE, ROOT, deleteDraft, getReviewed, listActiveReviews, listDrafts, loadConfig, markReviewed,
+  CONFIG_FILE, ROOT, deleteDraft, formatDuration, getReviewed, listActiveReviews, listDrafts, loadConfig, markReviewed,
   parsePRUrl, postReview, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
 import {
@@ -296,7 +296,7 @@ function renderDetail(W, H) {
   const head = [
     ...tabStrip(W),
     ` ${badge(d.verdict)}  ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(d.title, "bold")}`,
-    ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago${d.ai ? ` by ${d.ai.label}${d.ai.model && d.ai.model !== "default" ? ` (${d.ai.model})` : ""}` : ""}`, "gray")}   ${remoteNote(d)}`,
+    ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago${d.ai ? ` by ${d.ai.label}${d.ai.model && d.ai.model !== "default" ? ` (${d.ai.model})` : ""}${d.seconds != null ? ` in ${formatDuration(d.seconds)}` : ""}` : ""}`, "gray")}   ${remoteNote(d)}`,
     rule(W),
   ];
   const pairs = [["esc", "back"], ["p", "post"], ["a/r/c", "verdict"], ["1-9", "comment on/off"], ["e/E", "edit"],
@@ -589,9 +589,9 @@ function renderHistory(W, H) {
   const bodyH = H - head.length - foot.length;
   const COLOR = { posted: "green", drafted: "yellow", discarded: "gray", failed: "red" };
   const body = all.length
-    ? [paint(`   ${"STATUS".padEnd(10)}${"PR".padEnd(Math.max(10, W - 54))} ${"AI".padEnd(13)}${"POSTED AS".padEnd(16)}WHEN`, "gray"), ...all.flatMap(([key, v]) => {
-      const row = `   ${paint((v.status ?? "?").padEnd(10), COLOR[v.status] ?? "gray", "bold")}${fitPlain(key, Math.max(10, W - 54))} ` +
-        paint(`${fitPlain(v.ai?.label ?? "", 12).padEnd(13)}${(v.event ?? "").padEnd(16)}${age(v.at ?? 0)} ago`, "gray");
+    ? [paint(`   ${"STATUS".padEnd(10)}${"PR".padEnd(Math.max(10, W - 62))} ${"AI".padEnd(13)}${"POSTED AS".padEnd(16)}${"TOOK".padEnd(8)}WHEN`, "gray"), ...all.flatMap(([key, v]) => {
+      const row = `   ${paint((v.status ?? "?").padEnd(10), COLOR[v.status] ?? "gray", "bold")}${fitPlain(key, Math.max(10, W - 62))} ` +
+        paint(`${fitPlain(v.ai?.label ?? "", 12).padEnd(13)}${(v.event ?? "").padEnd(16)}${formatDuration(v.seconds).padEnd(8)}${age(v.at ?? 0)} ago`, "gray");
       return v.status === "failed" && v.error ? [row, paint(`             ${String(v.error).split("\n")[0]}`, "red")] : [row];
     })]
     : ["", paint("    Nothing yet. Reviews you post or discard are listed here.", "gray")];

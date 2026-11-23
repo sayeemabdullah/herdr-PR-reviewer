@@ -165,3 +165,11 @@ test("repoReviewRules asks for the base branch, and returns nothing when the fil
     assert.equal(repoReviewRules("o/r", "feature-x"), "", "only the base branch name the stub knows answers");
   } finally { delete process.env.RULES_ON; }
 });
+
+test("how long the AI took is saved with the draft and in the review history", async () => {
+  fresh();
+  const r = await reviewPR(cfg({ ai: "codex" }), "o/r", 1, { log: () => {} });
+  assert.equal(typeof r.draft.seconds, "number");
+  assert.ok(r.draft.seconds >= 0 && r.draft.seconds < 60);
+  assert.equal(getReviewed()["o/r#1"].seconds, r.draft.seconds);
+});
