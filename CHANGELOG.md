@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Resolve fixed comments (opt-in).** With `"resolveFixed": true`, a re-review numbers its earlier comments and the AI names the ones the
+  new commits clearly fixed. The inbox lists them (press `x` to turn it off for that review) and posting also marks those threads
+  resolved on GitHub. Only your own open threads with the same file and text are touched.
 - **Big PRs are reviewed in parts.** A diff over `maxDiffChars` used to be cut off. Now it is split into passes of whole
   files (at most `maxParts`, default 4), each reviewed on its own and merged: strictest verdict, all comments, each
   part's summary. Off with `"splitLarge": false`. Each part is a full AI run, so a big PR costs that many reviews.

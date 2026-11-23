@@ -38,7 +38,7 @@ Reviews wait in an inbox until you **post**, edit or discard them. Or turn that 
 <td width="33%" valign="top">
 
 ### Follow-ups
-After new commits it gets its previous review and the changes since, says what's fixed, and doesn't repeat itself.
+After new commits it gets its previous review and the changes since, says what's fixed (and can mark those threads resolved), and doesn't repeat itself.
 
 </td>
 </tr>
@@ -340,6 +340,7 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 | `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
 | `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
 | `instructions` | `""` | extra things the reviewer should check |
+| `resolveFixed` | `false` | on a re-review, the earlier comments the AI says are now fixed are marked resolved on GitHub when you post. Off by default, since it changes your threads |
 | `splitLarge` | `true` | a PR whose diff is over `maxDiffChars` is reviewed in parts (whole files each) and merged into one review, instead of being cut off |
 | `maxParts` | `4` | most parts a big PR is split into; each part is a full AI run, so it costs that many reviews |
 | `minSeverity` | `"nit"` | hide comments below this level: `"nit"` shows all, `"important"` hides nits, `"blocker"` keeps only what must be fixed |

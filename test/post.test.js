@@ -18,11 +18,12 @@ printf '%s\\t%s\\n' "$*" "$input" >> "${log}"
 case "$*" in
   "api user --jq .login") echo me ;;
   *pulls/*/comments*) [ -n "$FAIL_FILE" ] && exit 1 ;;
+  *reviewThreads*) printf '%s' "$THREADS" ;;
 esac
 exit 0
 `, { mode: 0o755 });
 process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
-const { postReview } = await import("../src/lib.js");
+const { postReview, resolveFixedThreads } = await import("../src/lib.js");
 
 const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").map((l) => {
   const [args, input] = l.split("\t");
@@ -93,4 +94,57 @@ test("nits and blockers are labelled in what is posted", () => {
   const c = calls().filter((x) => x.body);
   assert.deepEqual(c[0].body.comments.map((x) => x.body), ["**blocker:** must fix", "consider", "**nit:** rename"]);
   assert.equal(c[1].body.body, "**nit:** whole file");
+});
+
+const thread = (id, body, { path = "a.js", login = "me", resolved = false } = {}) =>
+  ({ id, isResolved: resolved, comments: { nodes: [{ body, path, author: { login } }] } });
+const withThreads = (nodes) => { process.env.THREADS = JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } }); };
+const resolvedIds = () => calls().filter((c) => /resolveReviewThread/.test(c.args)).map((c) => /id=(\S+)/.exec(c.args)[1]);
+
+test("resolveFixedThreads resolves your open thread with the same file and text, and nothing else", () => {
+  fs.rmSync(log, { force: true });
+  withThreads([
+    thread("T1", "null check?"),
+    thread("T2", "null check?", { login: "someone-else" }),
+    thread("T3", "null check?", { resolved: true }),
+    thread("T4", "null check?", { path: "other.js" }),
+    thread("T5", "different words"),
+    thread("T6", "**nit:** rename"),
+  ]);
+  const n = resolveFixedThreads(draft, [
+    { path: "a.js", line: 3, body: "null check?" },
+    { path: "a.js", line: 9, body: "rename", severity: "nit" },
+    { path: "a.js", line: 1, body: "no such thread" },
+  ]);
+  assert.equal(n, 2);
+  assert.deepEqual(resolvedIds().sort(), ["T1", "T6"]);
+});
+
+test("two earlier comments with the same text resolve two different threads", () => {
+  fs.rmSync(log, { force: true });
+  withThreads([thread("A", "same"), thread("B", "same")]);
+  assert.equal(resolveFixedThreads(draft, [{ path: "a.js", body: "same" }, { path: "a.js", body: "same" }]), 2);
+  assert.deepEqual(resolvedIds().sort(), ["A", "B"]);
+});
+
+test("posting resolves the fixed threads, unless you turned that off in the inbox", () => {
+  fs.rmSync(log, { force: true });
+  withThreads([thread("T1", "null check?")]);
+  const d = { ...draft, comments: [], fixed: [{ path: "a.js", line: 3, body: "null check?" }] };
+  postReview(d, { footer: "" });
+  assert.equal(d.resolvedCount, 1);
+  assert.deepEqual(resolvedIds(), ["T1"]);
+  fs.rmSync(log, { force: true });
+  const off = { ...d, resolveOff: true };
+  postReview(off, { footer: "" });
+  assert.equal(off.resolvedCount, 0);
+  assert.deepEqual(resolvedIds(), []);
+});
+
+test("a failing GitHub query never fails the post", () => {
+  fs.rmSync(log, { force: true });
+  process.env.THREADS = "not json";
+  const d = { ...draft, comments: [], fixed: [{ path: "a.js", body: "x" }] };
+  assert.equal(postReview(d, { footer: "" }), "REQUEST_CHANGES");
+  assert.equal(d.resolvedCount, 0);
 });

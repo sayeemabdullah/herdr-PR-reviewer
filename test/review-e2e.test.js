@@ -10,7 +10,7 @@ import test from "node:test";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-e2e-")));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
-const { getReviewed, loadConfig, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
+const { getReviewed, loadConfig, markReviewed, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
 
 // "GitHub": a repo whose PR #1 head is a commit.
 const origin = path.join(tmp, "origin");
@@ -48,10 +48,10 @@ const REVIEW = JSON.stringify({ verdict: "approve", summary: "Looks fine.", comm
 script("claude", `
 const fs = require("fs"), a = process.argv.slice(2), stdin = fs.readFileSync(0, "utf8");
 fs.appendFileSync(${JSON.stringify(LOG)} + "/claude.parts", JSON.stringify(/LARGE PR, PART (\\d) OF (\\d)/.exec(stdin)?.slice(1) ?? null) + "\\n");
-fs.writeFileSync(${JSON.stringify(LOG)} + "/claude.json", JSON.stringify({ argv: a, cwd: process.cwd(), stdinHasPrompt: stdin.includes("<pr>"),
+fs.writeFileSync(${JSON.stringify(LOG)} + "/claude.json", JSON.stringify({ argv: a, cwd: process.cwd(), stdinHasPrompt: stdin.includes("<pr>"), numbered: /\\n1\\. src\\/app\\.js:2: null\\?/.test(stdin), asksFixed: stdin.includes('"fixed": ['),
   rules: stdin.includes("<rules>\\nAlways check input validation.\\n</rules>"),
   rulesBeforePr: stdin.indexOf("<rules>") >= 0 && stdin.indexOf("<rules>") < stdin.lastIndexOf("<pr>") }));
-console.log(${JSON.stringify(REVIEW)});
+const R = ${REVIEW}; if (process.env.FIXED) R.fixed = JSON.parse(process.env.FIXED); console.log(JSON.stringify(R));
 `);
 
 process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
@@ -140,4 +140,41 @@ test("splitLarge: false keeps one pass, and a small PR is never split", async ()
   fs.rmSync(path.join(LOG, "claude.parts"), { force: true });
   await reviewPR(cfg({ maxDiffChars: 300 }), "o/r", 1, { log: () => {} });
   assert.deepEqual(partsSeen(), [null]);
+});
+
+const OLD = "a".repeat(40);
+const earlier = () => markReviewed("o/r#1", { sha: OLD, status: "posted", lastReview: { verdict: "comment", summary: "before", comments: [
+  { path: "src/app.js", line: 2, body: "skipped, never posted", excluded: true },
+  { path: "src/app.js", line: 2, body: "null?" },
+  { path: "src/app.js", line: 1, body: "second one" } ] } });
+
+test("resolveFixed: Claude sees the earlier comments numbered (switched-off ones left out) and its 'fixed' numbers become the draft's list", async () => {
+  process.env.FIXED = "[1, 7, 1]";
+  try {
+    fresh(); earlier();
+    const r = await reviewPR(cfg({ resolveFixed: true, finalWord: true }), "o/r", 1, { log: () => {} });
+    assert.ok(seen().numbered && seen().asksFixed, "numbered list and the 'fixed' field are in the prompt");
+    assert.deepEqual(r.draft.fixed, [{ path: "src/app.js", line: 2, body: "null?" }], "number 7 doesn't exist and 1 counted once");
+  } finally { delete process.env.FIXED; }
+});
+
+test("resolveFixed off (the default): nothing about fixing is asked for or kept", async () => {
+  process.env.FIXED = "[1]";
+  try {
+    fresh(); earlier();
+    const r = await reviewPR(cfg({ finalWord: true }), "o/r", 1, { log: () => {} });
+    assert.equal(seen().asksFixed, false);
+    assert.equal(r.draft.fixed, undefined);
+  } finally { delete process.env.FIXED; }
+});
+
+test("an auto-posted review resolves what it says is fixed; the review record keeps only posted comments", async () => {
+  process.env.FIXED = "[2]";
+  try {
+    fresh(); earlier();
+    const r = await reviewPR(cfg({ resolveFixed: true }), "o/r", 1, { log: () => {} });
+    assert.equal(r.status, "posted");
+    assert.deepEqual(r.draft.fixed, [{ path: "src/app.js", line: 1, body: "second one" }]);
+    assert.ok(getReviewed()["o/r#1"].lastReview.comments.every((c) => !c.excluded));
+  } finally { delete process.env.FIXED; }
 });
