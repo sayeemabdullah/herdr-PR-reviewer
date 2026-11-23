@@ -10,7 +10,7 @@ import test from "node:test";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-test-")));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
-const { loadConfig, reviewPR, listDrafts, deleteDraft, getReviewed } = await import("../src/lib.js");
+const { loadConfig, repoReviewRules, reviewPR, listDrafts, deleteDraft, getReviewed } = await import("../src/lib.js");
 
 // "GitHub": a repo whose PR #1 head also carries files a malicious PR would add.
 const origin = path.join(tmp, "origin");
@@ -41,6 +41,7 @@ else if (a[0] === "pr" && a[1] === "view") console.log(JSON.stringify({ number: 
   baseRefName: "main", headRefName: "x", headRefOid: ${JSON.stringify(sha)}, isDraft: false, additions: 1, deletions: 1, changedFiles: 1 }));
 else if (a[0] === "pr" && a[1] === "diff") process.stdout.write(${JSON.stringify(DIFF)});
 else if (a[0] === "repo" && a[1] === "clone") cp.execFileSync("git", ["clone", "-q", "--no-checkout", ${JSON.stringify(origin)}, a[3]]);
+else if (has("/contents/")) { if (has("REVIEW.md?ref=main") && !has(".github/") && process.env.RULES_ON) process.stdout.write("Always check input validation.\\n"); else process.exit(1); }
 else if (has("--method POST")) { fs.writeFileSync(${JSON.stringify(LOG)} + "/posted.json", fs.readFileSync(0, "utf8")); console.log("{}"); }
 else console.log("[]");
 `);
@@ -51,7 +52,8 @@ const record = (who) => `
 const fs = require("fs"), a = process.argv.slice(2), stdin = fs.readFileSync(0, "utf8");
 const ls = (d) => { try { return fs.readdirSync(d).sort(); } catch { return null; } };
 fs.writeFileSync(${JSON.stringify(LOG)} + "/${who}.json", JSON.stringify({ argv: a, cwd: process.cwd(), files: ls("."), cursor: ls(".cursor"),
-  stdinHasPrompt: stdin.includes("<pr>"), env: process.env.OPENCODE_CONFIG_CONTENT ?? null }));
+  stdinHasPrompt: stdin.includes("<pr>"),
+  rules: stdin.includes("<rules>\\nAlways check input validation.\\n</rules>"), rulesBeforePr: stdin.indexOf("<rules>") >= 0 && stdin.indexOf("<rules>") < stdin.lastIndexOf("<pr>"), env: process.env.OPENCODE_CONFIG_CONTENT ?? null }));
 `;
 script("codex", record("codex") + `const o = a[a.indexOf("-o") + 1]; fs.writeFileSync(o, "banner...\\n" + ${JSON.stringify(REVIEW)});`);
 script("claude", record("claude") + `console.log(${JSON.stringify(REVIEW)});`);
@@ -133,4 +135,33 @@ test("an AI that isn't installed fails with a clear message instead of running s
     await assert.rejects(() => reviewPR(cfg({ ai: "codex" }), "o/r", 1, { log: () => {} }), /Codex isn't installed/);
     await assert.rejects(() => reviewPR(cfg({ ai: "auto" }), "o/r", 1, { log: () => {} }), /No AI CLI found/);
   } finally { process.env.PATH = old; }
+});
+
+test("REVIEW.md from the base branch is added to the prompt, outside the untrusted <pr> block", async () => {
+  process.env.RULES_ON = "1";
+  try {
+    fresh();
+    await reviewPR(cfg({ ai: "claude" }), "o/r", 1, { log: () => {} });
+    assert.ok(seen("claude").rules, "rules inside <rules>");
+    assert.ok(seen("claude").rulesBeforePr, "rules come before the untrusted <pr> block");
+    fresh();
+    await reviewPR(cfg({ ai: "claude", repoRules: false }), "o/r", 1, { log: () => {} });
+    assert.equal(seen("claude").rules, false, "repoRules: false ignores the file");
+  } finally { delete process.env.RULES_ON; }
+});
+
+test("no REVIEW.md: the review runs as before", async () => {
+  fresh();
+  const r = await reviewPR(cfg({ ai: "claude" }), "o/r", 1, { log: () => {} });
+  assert.equal(r.status, "posted");
+  assert.equal(seen("claude").rules, false);
+});
+
+test("repoReviewRules asks for the base branch, and returns nothing when the file is missing", () => {
+  assert.equal(repoReviewRules("o/r", "main"), "");
+  process.env.RULES_ON = "1";
+  try {
+    assert.equal(repoReviewRules("o/r", "main"), "Always check input validation.");
+    assert.equal(repoReviewRules("o/r", "feature-x"), "", "only the base branch name the stub knows answers");
+  } finally { delete process.env.RULES_ON; }
 });

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Review rules in the repo.** A `REVIEW.md` (or `.github/REVIEW.md`) in a repo is followed by every review of it.
+  Read from the PR's base branch, never from the PR itself. Off with `"repoRules": false`, or in the Settings tab.
 - **`pr-panel doctor`.** Runs a tiny review (a one-line PR with a planted bug) on your AI and says what to fix
   if it fails: not installed, not signed in, timed out, or an answer the reviewer can't read. `--all` checks
   every installed AI, `--ai codex` one. Also an action, `pr-reviewer.doctor`.
