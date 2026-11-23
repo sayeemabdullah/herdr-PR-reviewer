@@ -340,6 +340,7 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 | `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
 | `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
 | `instructions` | `""` | extra things the reviewer should check |
+| `repoRules` | `true` | also follow the repo's own `REVIEW.md` (see [Review rules in the repo](#review-rules-in-the-repo)) |
 | `maxDiffChars` | `150000` | longer diffs are cut off (with `readCode`, the AI can still open the files) |
 | `pollSeconds` | `180` | how often it checks GitHub |
 | `maxParallel` | `2` | how many PRs are reviewed at once |
@@ -363,6 +364,21 @@ Any AI CLI works: it gets the prompt on stdin and must print a JSON review on st
 </details>
 
 <a id="safety"></a>
+
+### Review rules in the repo
+
+Put a `REVIEW.md` (or `.github/REVIEW.md`) in a repo and every review of that repo follows it: what to check, what to
+ignore, how your team writes things. It is plain markdown, up to 8,000 characters.
+
+```md
+- Every new endpoint needs an auth check and a test.
+- We use `Result` types, flag any new `throw`.
+- Ignore formatting, the linter handles it.
+```
+
+It is read from the PR's **base branch** (usually `main`), never from the PR, so an author can't change the rules
+for their own review. Rules can't change the reply format or the safety rules. For rules that only you want,
+use `instructions` in `config.json` (global or per repo). Turn this off with `"repoRules": false`.
 
 ## Safe by default
 

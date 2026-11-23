@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Review rules in the repo.** A `REVIEW.md` (or `.github/REVIEW.md`) in a repo is followed by every review of it.
+  Read from the PR's base branch, never from the PR itself. Off with `"repoRules": false`, or in the Settings tab.
+
 ## 0.3.0
 
 - **PR Panel.** The inbox is now PR Panel, with four tabs: Inbox, Repos, Settings and History. Move with
