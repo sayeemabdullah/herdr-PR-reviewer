@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Severity on every comment.** The AI marks each comment `blocker`, `important` or `nit`. The inbox lists blockers first
+  and tags them, posted comments say `**blocker:**` or `**nit:**`, and the new `minSeverity` setting (also in the Settings tab)
+  hides what's below a level. The summary is always kept.
 - **Multi-line suggestions.** A fix can now replace several lines (`start_line`), not just one. A suggestion that can't
   be applied where it lands (whole-file comment, line outside the diff, a range that crosses a gap) is shown as
   plain code instead of a button that would change the wrong lines.

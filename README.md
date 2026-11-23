@@ -47,7 +47,7 @@ After new commits it gets its previous review and the changes since, says what's
 <td valign="top">
 
 ### Signal, not noise
-It skips points other reviewers already made, leaves lockfiles and build output out, and suggests one-click fixes.
+It skips points other reviewers already made, leaves lockfiles and build output out, labels each comment blocker, important or nit (hide the nits if you like), and suggests one-click fixes.
 
 </td>
 <td valign="top">
@@ -362,6 +362,7 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 | `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
 | `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
 | `instructions` | `""` | extra things the reviewer should check |
+| `minSeverity` | `"nit"` | hide comments below this level: `"nit"` shows all, `"important"` hides nits, `"blocker"` keeps only what must be fixed |
 | `repoRules` | `true` | also follow the repo's own `REVIEW.md` (see [Review rules in the repo](#review-rules-in-the-repo)) |
 | `maxDiffChars` | `150000` | longer diffs are cut off (with `readCode`, the AI can still open the files) |
 | `pollSeconds` | `180` | how often it checks GitHub |
