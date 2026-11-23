@@ -555,16 +555,25 @@ export function commentableRanges(valid, { skip = [], maxChars = 6000 } = {}) {
  */
 export function placeComments(comments, valid) {
   const placed = [], folded = [];
+  const num = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
   for (const c of comments) {
     const body = String(c.body);
-    const line = c.line === null || c.line === undefined || c.line === "" ? null : Number(c.line);
+    const line = num(c.line), start = num(c.start_line);
     const lines = valid.get(c.path);
-    if (lines && line !== null && lines.has(line)) placed.push({ path: c.path, line, body });
-    else if (lines) placed.push({ path: c.path, line: null, body: line ? `**Line ${line}:** ${body}` : body });
-    else folded.push({ path: c.path, line, body });
+    if (lines && line !== null && lines.has(line)) {
+      // A range (start_line..line) only counts when every line in it can take a comment, i.e. it is inside one hunk.
+      const range = start !== null && start < line && Array.from({ length: line - start + 1 }, (_, i) => start + i).every((n) => lines.has(n));
+      if (range) placed.push({ path: c.path, start_line: start, line, body });
+      // The AI meant a range but it isn't valid: a suggestion would replace the wrong lines, so show it as code instead.
+      else placed.push({ path: c.path, line, body: start !== null ? asCode(body) : body });
+    } else if (lines) placed.push({ path: c.path, line: null, body: asCode(line ? `**Line ${line}:** ${body}` : body) });
+    else folded.push({ path: c.path, line, body: asCode(body) });
   }
   return { placed, folded };
 }
+
+/** A ```suggestion block only works on an inline comment; anywhere else show it as plain code. */
+export const asCode = (body) => String(body).replace(/```suggestion[^\n]*/g, "```");
 
 export function postReview(draft, settings) {
   let event = EVENTS[draft.verdict] ?? "COMMENT";
@@ -581,7 +590,10 @@ export function postReview(draft, settings) {
     commit_id: draft.headSha,
     event,
     body,
-    comments: lineComments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })),
+    comments: lineComments.map((c) => ({
+      path: c.path, line: c.line, side: "RIGHT", body: c.body,
+      ...(c.start_line && c.start_line < c.line ? { start_line: c.start_line, start_side: "RIGHT" } : {}),
+    })),
   };
   const endpoint = ["api", `repos/${draft.repo}/pulls/${draft.number}/reviews`, "--method", "POST", "--input", "-"];
   const r = run("gh", endpoint, { input: JSON.stringify(payload), allowFail: true });
@@ -611,7 +623,7 @@ function postFileComments(draft, comments) {
 }
 
 const foldComments = (cs) =>
-  "**Notes:**\n" + cs.map((c) => `- \`${c.path}${c.line ? `:${c.line}` : ""}\` — ${c.body}`).join("\n");
+  "**Notes:**\n" + cs.map((c) => `- \`${c.path}${c.line ? `:${c.start_line && c.start_line < c.line ? `${c.start_line}-` : ""}${c.line}` : ""}\` — ${asCode(c.body)}`).join("\n");
 
 // ---------- AI agent ----------
 
@@ -681,10 +693,12 @@ the COMMENTABLE LINES listed below (lines of the new file that are inside the di
 a changed file but no commentable line fits, use "line": null for a comment on the whole file.
 In the diffs below, each line starts with its line number in the new file and a tab (blank for removed
 lines). Use that number for "line"; never count lines yourself.
-When a small fix is certain and replaces exactly the commented line, include a GitHub suggestion block in
-the comment body so the author can apply it with one click:
+When a small fix is certain, include a GitHub suggestion block in the comment body so the author can apply it with
+one click. The block REPLACES the commented line, or the lines start_line..line when you set "start_line" (the first
+line of the range, also a COMMENTABLE LINE, in the same hunk). Write exactly the lines that should be there instead,
+with the file's own indentation. Suggest only a fix you are sure of, on changed code, never a guess:
 \`\`\`suggestion
-<the corrected line>
+<the corrected line(s)>
 \`\`\`
 ${commentable ? `
 COMMENTABLE LINES (file: line ranges):
@@ -693,7 +707,7 @@ ${commentable}
 Reply with ONLY a JSON object, nothing before or after it:
 {"verdict": "approve" | "request_changes" | "comment",
  "summary": "<markdown overview: what the PR does and your key findings, concise>",
- "comments": [{"path": "<file path as in diff>", "line": <a COMMENTABLE LINE number, or null for the whole file>, "body": "<markdown>"}]}
+ "comments": [{"path": "<file path as in diff>", "line": <a COMMENTABLE LINE number, or null for the whole file>, "start_line": <only for a multi-line suggestion: its first line>, "body": "<markdown>"}]}
 At most 15 inline comments; only things worth a reviewer's attention.
 
 <pr>
