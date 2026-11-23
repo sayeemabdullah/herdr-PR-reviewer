@@ -3,7 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AI_IDS, agentArgv, hardenCheckout, modelShown, pickAgent, planRun, readReply } from "./agents.js";
+import { AI_IDS, agentArgv, hardenCheckout, modelShown, pickAgent, planRun, readReply, writeWorkFiles } from "./agents.js";
 
 export { agentArgv };
 
@@ -177,6 +177,8 @@ export const DEFAULTS = {
     "**/*.snap", "**/dist/**", "**/vendor/**",
   ],
   instructions: "",
+  splitLarge: true, // a PR whose diff is over maxDiffChars is reviewed in several passes, not cut off
+  maxParts: 4, // at most this many passes (each one is a full AI run)
   minSeverity: "nit", // hide comments below this: "nit" (show all), "important" or "blocker"
   repoRules: true, // also follow the repo's own REVIEW.md (read from the PR's base branch, never from the PR)
   footer: "\n\n---\n<sub>🤖 AI-assisted review via herdr pr-reviewer</sub>",
@@ -655,6 +657,55 @@ function postFileComments(draft, comments) {
 const foldComments = (cs) =>
   "**Notes:**\n" + cs.map((c) => `- \`${c.path}${c.line ? `:${c.start_line && c.start_line < c.line ? `${c.start_line}-` : ""}${c.line}` : ""}\` — ${asCode(labelled(c))}`).join("\n");
 
+// ---------- big PRs: review in parts ----------
+
+const fileBlocks = (diff) => diff.split(/(?=^diff --git )/m).filter(Boolean);
+const blockFile = (b) => /^diff --git a\/.+? b\/(.+)$/m.exec(b)?.[1];
+
+/** Changed files in a diff, in order. */
+export const diffFiles = (diff) => fileBlocks(diff).map(blockFile).filter(Boolean);
+
+/** Only these files' parts of a diff. */
+export const onlyFiles = (diff, files) => fileBlocks(diff).filter((b) => files.includes(blockFile(b))).join("");
+
+/**
+ * Cut a diff into passes of at most `maxChars`, whole files only (a file bigger than that gets a pass of its own).
+ * At most `maxParts` passes: whatever is left joins the last one, which the AI then reads from the checkout.
+ */
+export function splitDiff(diff, maxChars, maxParts = 4) {
+  const parts = [];
+  let cur = "";
+  for (const b of fileBlocks(diff)) {
+    if (cur && cur.length + b.length > maxChars) { parts.push(cur); cur = ""; }
+    cur += b;
+  }
+  if (cur) parts.push(cur);
+  if (parts.length <= maxParts) return parts.length ? parts : [diff];
+  return [...parts.slice(0, maxParts - 1), parts.slice(maxParts - 1).join("")];
+}
+
+/** The lines GitHub accepts comments on, for just these files. */
+export const validFor = (valid, files) => new Map([...valid].filter(([f]) => files.includes(f)));
+
+const WORST = ["approve", "comment", "request_changes"];
+
+/**
+ * One review from several passes: the strictest verdict, every comment, and each pass's summary under its files.
+ * results: [{ review, seconds }], files: the files each pass covered.
+ */
+export function mergeReviews(results, files) {
+  if (results.length === 1) return results[0];
+  const verdict = results.map((r) => r.review.verdict).reduce((a, b) => (WORST.indexOf(b) > WORST.indexOf(a) ? b : a));
+  const summary = `_This PR is large, so it was reviewed in ${results.length} parts._\n\n` + results.map((r, i) => {
+    const names = files[i].slice(0, 3).map((f) => `\`${f}\``).join(", ") + (files[i].length > 3 ? ` and ${files[i].length - 3} more` : "");
+    return `**Part ${i + 1}** (${names})\n${r.review.summary}`;
+  }).join("\n\n");
+  return {
+    review: { verdict, summary, comments: results.flatMap((r) => r.review.comments) },
+    seconds: results.reduce((n, r) => n + (r.seconds ?? 0), 0),
+  };
+}
+
 // ---------- AI agent ----------
 
 const cut = (s, n) => (s.length > n ? s.slice(0, n) + "\n... [truncated]" : s);
@@ -664,7 +715,7 @@ const cut = (s, n) => (s.length > n ? s.slice(0, n) + "\n... [truncated]" : s);
  * Exported for tests.
  */
 export function buildPrompt(pr, settings, ctx) {
-  const { diff, skipped = [], codeAccess = false, previous = null, feedback = "", commentable = "", rules = "" } = ctx;
+  const { diff, skipped = [], codeAccess = false, previous = null, feedback = "", commentable = "", rules = "", part = null } = ctx;
   const truncated = diff.length > settings.maxDiffChars;
   const shown = numberDiff(cut(diff, settings.maxDiffChars));
   const prev = previous?.review;
@@ -693,7 +744,10 @@ THE DIFF BELOW IS TRUNCATED. These changed files are missing from it (or only pa
 them with Read and review them like the rest of the PR (skip generated files, fixtures and lockfiles):
 ${cutFiles.map((f) => `- ${f}`).join("\n")}
 ` : ""}` : ""}
-Focus on correctness, bugs, security, missing edge cases, tests, and clarity. Skip pure style nitpicks.
+${part ? `LARGE PR, PART ${part.n} OF ${part.of}: this PR is too big for one pass, so it is reviewed in parts. Review ONLY the ${part.files.length} files
+in the diff below; the other parts are reviewed separately. Keep your summary to these files.
+
+` : ""}Focus on correctness, bugs, security, missing edge cases, tests, and clarity. Skip pure style nitpicks.
 Verdict rules:
 - "approve": no blocking problems.
 - "request_changes": at least one bug, security issue, or clear defect that must be fixed before merge.
@@ -826,24 +880,43 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       const rules = settings.repoRules ? repoReviewRules(repo, pr.baseRefName) : "";
       if (rules) log(`  following REVIEW.md from ${pr.baseRefName}`);
 
-      const prompt = buildPrompt(pr, settings, {
-        diff, skipped, codeAccess: !!checkout, previous, feedback, rules,
-        commentable: commentableRanges(valid, { skip: skipped }),
-      });
       const workDir = checkout?.dir ?? tmp; // without code access, keep the agent away from any project files
-      const plan = planRun(adapter, { bin, settings, codeAccess: !!checkout, workDir, tmp, prompt });
-      for (const [rel, text] of Object.entries(plan.workFiles)) {
-        fs.mkdirSync(path.dirname(path.join(workDir, rel)), { recursive: true });
-        fs.writeFileSync(path.join(workDir, rel), text);
+
+      // One AI run: write its files, run it, read its reply, put the files back the way they were.
+      const runPass = async (ad, adBin, ctx) => {
+        const prompt = buildPrompt(pr, settings, { skipped, codeAccess: !!checkout, feedback, rules, ...ctx });
+        const plan = planRun(ad, { bin: adBin, settings, codeAccess: !!checkout, workDir, tmp, prompt });
+        const undo = writeWorkFiles(workDir, plan.workFiles);
+        try {
+          const model = modelShown(ad, settings);
+          log(`  running ${ad.label}${model !== "default" ? ` (${model})` : ""}${checkout ? " with read-only code access" : ""} …`);
+          const startedAt = Date.now();
+          const [cmd, ...args] = plan.argv;
+          const stdout = await runAsync(cmd, args, {
+            input: plan.input, env: plan.env, cwd: workDir, timeoutMs: settings.agent.timeoutSeconds * 1000,
+          });
+          return { review: parseAgentOutput(readReply(ad, stdout, plan)), seconds: Math.round((Date.now() - startedAt) / 1000) };
+        } finally {
+          undo();
+        }
+      };
+
+      // A diff over maxDiffChars is reviewed in parts (whole files each), instead of being cut off.
+      const pieces = settings.splitLarge && diff.length > settings.maxDiffChars
+        ? splitDiff(diff, settings.maxDiffChars, settings.maxParts) : [diff];
+      const results = [];
+      for (const [i, piece] of pieces.entries()) {
+        const files = diffFiles(piece);
+        if (pieces.length > 1) log(`  part ${i + 1} of ${pieces.length} (${files.length} files)`);
+        results.push(await runPass(adapter, bin, {
+          diff: piece,
+          part: pieces.length > 1 ? { n: i + 1, of: pieces.length, files } : null,
+          commentable: commentableRanges(pieces.length > 1 ? validFor(valid, files) : valid, { skip: skipped }),
+          previous: previous && pieces.length > 1 && previous.sinceDiff
+            ? { ...previous, sinceDiff: onlyFiles(previous.sinceDiff, files) } : previous,
+        }));
       }
-      const [cmd, ...args] = plan.argv;
-      log(`  running ${adapter.label}${ai.model !== "default" ? ` (${ai.model})` : ""}${checkout ? " with read-only code access" : ""} …`);
-      const startedAt = Date.now();
-      const stdout = await runAsync(cmd, args, {
-        input: plan.input, env: plan.env, cwd: workDir, timeoutMs: settings.agent.timeoutSeconds * 1000,
-      });
-      seconds = Math.round((Date.now() - startedAt) / 1000);
-      review = parseAgentOutput(readReply(adapter, stdout, plan));
+      ({ review, seconds } = mergeReviews(results, pieces.map(diffFiles)));
     } finally {
       checkout?.cleanup();
       fs.rmSync(tmp, { recursive: true, force: true });

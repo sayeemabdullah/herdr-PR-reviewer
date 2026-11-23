@@ -177,6 +177,23 @@ export const modelShown = (adapter, settings) =>
 /** The model reply as text: usually stdout, but Codex writes its last message to a file. */
 export const readReply = (adapter, stdout, plan) => (adapter.parse ? adapter.parse(stdout, plan) : stdout);
 
+/** Write the files a run needs into `dir`; returns a function that removes what it added again. */
+export function writeWorkFiles(dir, files) {
+  const made = [];
+  for (const [rel, text] of Object.entries(files)) {
+    const p = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, text);
+    made.push(p);
+  }
+  return () => {
+    for (const p of made) {
+      fs.rmSync(p, { force: true });
+      if (path.dirname(p) !== dir) { try { fs.rmdirSync(path.dirname(p)); } catch {} } // a sub-folder we made, if now empty
+    }
+  };
+}
+
 const DROP_FILES = new Set(["agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md",
   ".cursorrules", "opencode.json", "opencode.jsonc"]);
 const DROP_DIRS = new Set([".cursor", ".gemini", ".opencode", ".codex", ".claude", ".agents"]);

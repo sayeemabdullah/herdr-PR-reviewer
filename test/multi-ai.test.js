@@ -39,7 +39,7 @@ const fs = require("fs"), cp = require("child_process"), a = process.argv.slice(
 if (has("api user")) console.log("me");
 else if (a[0] === "pr" && a[1] === "view") console.log(JSON.stringify({ number: 1, title: "Add thing", body: "", url: "u", author: { login: "stranger" },
   baseRefName: "main", headRefName: "x", headRefOid: ${JSON.stringify(sha)}, isDraft: false, additions: 1, deletions: 1, changedFiles: 1 }));
-else if (a[0] === "pr" && a[1] === "diff") process.stdout.write(${JSON.stringify(DIFF)});
+else if (a[0] === "pr" && a[1] === "diff") process.stdout.write(process.env.BIG_DIFF ? ["a", "b", "c"].map((f) => "diff --git a/" + f + ".js b/" + f + ".js\\n--- /dev/null\\n+++ b/" + f + ".js\\n@@ -0,0 +1,2 @@\\n+" + "x".repeat(100) + "\\n+y\\n").join("") : ${JSON.stringify(DIFF)});
 else if (a[0] === "repo" && a[1] === "clone") cp.execFileSync("git", ["clone", "-q", "--no-checkout", ${JSON.stringify(origin)}, a[3]]);
 else if (has("/contents/")) { if (has("REVIEW.md?ref=main") && !has(".github/") && process.env.RULES_ON) process.stdout.write("Always check input validation.\\n"); else process.exit(1); }
 else if (has("--method POST")) { fs.writeFileSync(${JSON.stringify(LOG)} + "/posted.json", fs.readFileSync(0, "utf8")); console.log("{}"); }
@@ -51,6 +51,7 @@ const REVIEW = JSON.stringify({ verdict: "approve", summary: "Looks fine.", comm
 const record = (who) => `
 const fs = require("fs"), a = process.argv.slice(2), stdin = fs.readFileSync(0, "utf8");
 const ls = (d) => { try { return fs.readdirSync(d).sort(); } catch { return null; } };
+fs.appendFileSync(${JSON.stringify(LOG)} + "/${who}.parts", JSON.stringify(/LARGE PR, PART (\\d) OF (\\d)/.exec(stdin)?.slice(1) ?? null) + "\\n");
 fs.writeFileSync(${JSON.stringify(LOG)} + "/${who}.json", JSON.stringify({ argv: a, cwd: process.cwd(), files: ls("."), cursor: ls(".cursor"),
   stdinHasPrompt: stdin.includes("<pr>"),
   rules: stdin.includes("<rules>\\nAlways check input validation.\\n</rules>"), rulesBeforePr: stdin.indexOf("<rules>") >= 0 && stdin.indexOf("<rules>") < stdin.lastIndexOf("<pr>"), env: process.env.OPENCODE_CONFIG_CONTENT ?? null }));
@@ -172,4 +173,44 @@ test("how long the AI took is saved with the draft and in the review history", a
   assert.equal(typeof r.draft.seconds, "number");
   assert.ok(r.draft.seconds >= 0 && r.draft.seconds < 60);
   assert.equal(getReviewed()["o/r#1"].seconds, r.draft.seconds);
+});
+
+const partsSeen = (who) => fs.readFileSync(path.join(LOG, `${who}.parts`), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+
+test("a PR bigger than maxDiffChars is reviewed in parts, one AI run each, and merged into one review", async () => {
+  process.env.BIG_DIFF = "1";
+  try {
+    fresh();
+    fs.rmSync(path.join(LOG, "claude.parts"), { force: true });
+    const r = await reviewPR(cfg({ ai: "claude", maxDiffChars: 300, finalWord: true }), "o/r", 1, { log: () => {} });
+    assert.deepEqual(partsSeen("claude"), [["1", "3"], ["2", "3"], ["3", "3"]]);
+    assert.match(r.draft.summary, /reviewed in 3 parts/);
+    assert.match(r.draft.summary, /\*\*Part 3\*\* \(`c\.js`\)/);
+    assert.equal(r.status, "drafted");
+  } finally { delete process.env.BIG_DIFF; }
+});
+
+test("splitLarge: false keeps one pass, and a small PR is never split", async () => {
+  fresh();
+  process.env.BIG_DIFF = "1";
+  try {
+    fs.rmSync(path.join(LOG, "claude.parts"), { force: true });
+    await reviewPR(cfg({ ai: "claude", maxDiffChars: 300, splitLarge: false }), "o/r", 1, { log: () => {} });
+    assert.deepEqual(partsSeen("claude"), [null]);
+  } finally { delete process.env.BIG_DIFF; }
+  fresh();
+  fs.rmSync(path.join(LOG, "claude.parts"), { force: true });
+  await reviewPR(cfg({ ai: "claude", maxDiffChars: 300 }), "o/r", 1, { log: () => {} });
+  assert.deepEqual(partsSeen("claude"), [null]);
+});
+
+test("every part of a split review works for an AI that needs files in the checkout (Cursor)", async () => {
+  process.env.BIG_DIFF = "1";
+  try {
+    fresh();
+    fs.rmSync(path.join(LOG, "cursor.parts"), { force: true });
+    const r = await reviewPR(cfg({ ai: "cursor", maxDiffChars: 300 }), "o/r", 1, { log: () => {} });
+    assert.equal(partsSeen("cursor").length, 3);
+    assert.equal(r.status, "drafted");
+  } finally { delete process.env.BIG_DIFF; }
 });
