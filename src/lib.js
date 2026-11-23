@@ -172,6 +172,7 @@ export const DEFAULTS = {
     "**/*.snap", "**/dist/**", "**/vendor/**",
   ],
   instructions: "",
+  minSeverity: "nit", // hide comments below this: "nit" (show all), "important" or "blocker"
   repoRules: true, // also follow the repo's own REVIEW.md (read from the PR's base branch, never from the PR)
   footer: "\n\n---\n<sub>🤖 AI-assisted review via herdr pr-reviewer</sub>",
   autoStartWatcher: true,
@@ -197,6 +198,9 @@ export function loadConfig() {
   cfg.repos = (cfg.repos ?? [])
     .map((r) => (typeof r === "string" ? { repo: r } : r))
     .filter((r) => r.repo && !r.repo.startsWith("your-"));
+  if (cfg.minSeverity !== undefined && !SEVERITIES.includes(cfg.minSeverity)) {
+    throw new Error(`"minSeverity" must be one of ${SEVERITIES.join(", ")}, not ${JSON.stringify(cfg.minSeverity)}`);
+  }
   for (const r of cfg.repos) {
     if (r.review !== undefined && r.review !== "all" && r.review !== "requested") {
       throw new Error(`${r.repo}: "review" must be "all" or "requested", not ${JSON.stringify(r.review)}`);
@@ -515,6 +519,18 @@ export function numberDiff(diff) {
   }).join("\n");
 }
 
+/** How much a comment matters, least to most. A comment without one counts as "important". */
+export const SEVERITIES = ["nit", "important", "blocker"];
+const rank = (c) => SEVERITIES.indexOf(c.severity ?? "important");
+
+/** Drop comments below `min`, and put the most important first (keeping the AI's order within a level). */
+export function filterBySeverity(comments, min = "nit") {
+  const floor = Math.max(0, SEVERITIES.indexOf(min));
+  const kept = comments.filter((c) => rank(c) >= floor);
+  const sorted = kept.map((c, i) => [c, i]).sort((a, b) => rank(b[0]) - rank(a[0]) || a[1] - b[1]).map(([c]) => c);
+  return { comments: sorted, hidden: comments.length - kept.length };
+}
+
 const EVENTS = { approve: "APPROVE", request_changes: "REQUEST_CHANGES", comment: "COMMENT" };
 
 /** "src/a.js: 1-4, 10-12" per file, for telling the AI exactly which lines can take a comment. */
@@ -549,17 +565,22 @@ export function placeComments(comments, valid) {
     const body = String(c.body);
     const line = num(c.line), start = num(c.start_line);
     const lines = valid.get(c.path);
+    const sev = SEVERITIES.includes(c.severity) ? { severity: c.severity } : {};
     if (lines && line !== null && lines.has(line)) {
       // A range (start_line..line) only counts when every line in it can take a comment, i.e. it is inside one hunk.
       const range = start !== null && start < line && Array.from({ length: line - start + 1 }, (_, i) => start + i).every((n) => lines.has(n));
-      if (range) placed.push({ path: c.path, start_line: start, line, body });
+      if (range) placed.push({ path: c.path, start_line: start, line, body, ...sev });
       // The AI meant a range but it isn't valid: a suggestion would replace the wrong lines, so show it as code instead.
-      else placed.push({ path: c.path, line, body: start !== null ? asCode(body) : body });
-    } else if (lines) placed.push({ path: c.path, line: null, body: asCode(line ? `**Line ${line}:** ${body}` : body) });
-    else folded.push({ path: c.path, line, body: asCode(body) });
+      else placed.push({ path: c.path, line, body: start !== null ? asCode(body) : body, ...sev });
+    } else if (lines) placed.push({ path: c.path, line: null, body: asCode(line ? `**Line ${line}:** ${body}` : body), ...sev });
+    else folded.push({ path: c.path, line, body: asCode(body), ...sev });
   }
   return { placed, folded };
 }
+
+/** Posted text: nits and blockers say so, up front. An "important" comment needs no label. */
+export const labelled = (c) =>
+  c.severity === "nit" ? `**nit:** ${c.body}` : c.severity === "blocker" ? `**blocker:** ${c.body}` : c.body;
 
 /** A ```suggestion block only works on an inline comment; anywhere else show it as plain code. */
 export const asCode = (body) => String(body).replace(/```suggestion[^\n]*/g, "```");
@@ -580,7 +601,7 @@ export function postReview(draft, settings) {
     event,
     body,
     comments: lineComments.map((c) => ({
-      path: c.path, line: c.line, side: "RIGHT", body: c.body,
+      path: c.path, line: c.line, side: "RIGHT", body: labelled(c),
       ...(c.start_line && c.start_line < c.line ? { start_line: c.start_line, start_side: "RIGHT" } : {}),
     })),
   };
@@ -602,7 +623,7 @@ function postFileComments(draft, comments) {
   const failed = [];
   for (const c of comments) {
     const r = run("gh", ["api", `repos/${draft.repo}/pulls/${draft.number}/comments`, "--method", "POST", "--input", "-"],
-      { input: JSON.stringify({ body: c.body, commit_id: draft.headSha, path: c.path, subject_type: "file" }), allowFail: true });
+      { input: JSON.stringify({ body: labelled(c), commit_id: draft.headSha, path: c.path, subject_type: "file" }), allowFail: true });
     if (!r.ok) failed.push(c);
   }
   if (failed.length) {
@@ -612,7 +633,7 @@ function postFileComments(draft, comments) {
 }
 
 const foldComments = (cs) =>
-  "**Notes:**\n" + cs.map((c) => `- \`${c.path}${c.line ? `:${c.start_line && c.start_line < c.line ? `${c.start_line}-` : ""}${c.line}` : ""}\` — ${asCode(c.body)}`).join("\n");
+  "**Notes:**\n" + cs.map((c) => `- \`${c.path}${c.line ? `:${c.start_line && c.start_line < c.line ? `${c.start_line}-` : ""}${c.line}` : ""}\` — ${asCode(labelled(c))}`).join("\n");
 
 // ---------- AI agent ----------
 
@@ -706,7 +727,9 @@ ${commentable}
 Reply with ONLY a JSON object, nothing before or after it:
 {"verdict": "approve" | "request_changes" | "comment",
  "summary": "<markdown overview: what the PR does and your key findings, concise>",
- "comments": [{"path": "<file path as in diff>", "line": <a COMMENTABLE LINE number, or null for the whole file>, "start_line": <only for a multi-line suggestion: its first line>, "body": "<markdown>"}]}
+ "comments": [{"path": "<file path as in diff>", "line": <a COMMENTABLE LINE number, or null for the whole file>, "start_line": <only for a multi-line suggestion: its first line>, "severity": "blocker" | "important" | "nit", "body": "<markdown>"}]}
+Severity of each comment: "blocker" = a bug, security issue or defect that must be fixed before merge;
+"important" = should be fixed, but the PR could ship without it; "nit" = small and optional (naming, tiny cleanups).
 At most 15 inline comments; only things worth a reviewer's attention.
 
 <pr>
@@ -804,7 +827,9 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
 
     // Line comments where GitHub accepts them, file-level comments for other findings in changed files,
     // and only findings about untouched files go into the summary.
-    const { placed: ok, folded: stray } = placeComments(review.comments, valid);
+    const { comments: shown, hidden } = filterBySeverity(review.comments, settings.minSeverity);
+    if (hidden) log(`  ${hidden} comment${hidden === 1 ? "" : "s"} below "${settings.minSeverity}" left out`);
+    const { placed: ok, folded: stray } = placeComments(shown, valid);
     if (stray.length) review.summary += "\n\n" + foldComments(stray);
 
     if (review.verdict === "approve" && !settings.allowApprove) {

@@ -22,6 +22,8 @@ export const FIELDS = [
     help: "How hard the model thinks. Higher is slower and costs more." },
   { key: "readCode", type: "bool", label: "Read the whole repo", on: "yes (read-only checkout)", off: "diff only" },
   { key: "allowApprove", type: "bool", label: "AI may approve", on: "yes", off: "never, only comment / request changes" },
+  { key: "minSeverity", type: "choice", label: "Show comments", options: ["nit", "important", "blocker"],
+    help: "nit = everything; important = hide nits; blocker = only what must be fixed. The summary is always kept." },
   { key: "repoRules", type: "bool", label: "Repo rules", on: "follow REVIEW.md in the repo", off: "ignore it" },
   { key: "rereviewOnPush", type: "bool", label: "Re-review new commits", on: "yes", off: "no" },
   { key: "skipDrafts", type: "bool", label: "Skip draft PRs", on: "yes", off: "no" },

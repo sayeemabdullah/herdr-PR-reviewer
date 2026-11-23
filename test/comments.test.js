@@ -85,3 +85,46 @@ test("the prompt explains multi-line suggestions", () => {
   assert.match(p, /"start_line"/);
   assert.match(p, /REPLACES the commented line, or the lines start_line\.\.line/);
 });
+
+const { filterBySeverity, labelled, SEVERITIES } = await import("../src/lib.js");
+const C = (severity, body = severity) => ({ path: "src/app.js", line: 3, body, ...(severity ? { severity } : {}) });
+
+test("comments are sorted blocker, important, nit; the AI's order is kept within a level", () => {
+  const { comments, hidden } = filterBySeverity([C("nit", "n1"), C("blocker", "b1"), C(undefined, "u1"), C("important", "i1"), C("blocker", "b2")]);
+  assert.deepEqual(comments.map((c) => c.body), ["b1", "b2", "u1", "i1", "n1"]);
+  assert.equal(hidden, 0);
+});
+
+test("minSeverity hides what is below it, and an unlabelled comment counts as important", () => {
+  const all = [C("nit"), C("important"), C("blocker"), C(undefined, "plain")];
+  assert.deepEqual(filterBySeverity(all, "important").comments.map((c) => c.body), ["blocker", "important", "plain"]);
+  assert.equal(filterBySeverity(all, "important").hidden, 1);
+  assert.deepEqual(filterBySeverity(all, "blocker").comments.map((c) => c.body), ["blocker"]);
+  assert.equal(filterBySeverity(all, "blocker").hidden, 3);
+  assert.deepEqual(SEVERITIES, ["nit", "important", "blocker"]);
+});
+
+test("severity survives placing, and a made-up severity is dropped", () => {
+  const { placed } = placeComments([
+    { path: "src/app.js", line: 3, body: "a", severity: "blocker" },
+    { path: "src/app.js", line: 3, body: "b", severity: "catastrophic" },
+    { path: "src/app.js", line: 7, body: "c", severity: "nit" },
+    { path: "src/untouched.js", line: 1, body: "d", severity: "nit" },
+  ], valid);
+  assert.deepEqual(placed.map((c) => c.severity), ["blocker", undefined, "nit"]);
+});
+
+test("posted comments say when they are a nit or a blocker; important ones are plain", () => {
+  assert.equal(labelled(C("nit", "rename")), "**nit:** rename");
+  assert.equal(labelled(C("blocker", "null deref")), "**blocker:** null deref");
+  assert.equal(labelled(C("important", "add a test")), "add a test");
+  assert.equal(labelled(C(undefined, "plain")), "plain");
+});
+
+test("the prompt asks for a severity on every comment", () => {
+  const pr = { repo: "a/b", title: "t", author: { login: "x" }, headRefName: "h", baseRefName: "main",
+    changedFiles: 1, additions: 1, deletions: 0, body: "", headRefOid: "c".repeat(40) };
+  const p = buildPrompt(pr, loadConfig(), { diff: "diff --git a/src/app.js b/src/app.js\n" });
+  assert.match(p, /"severity": "blocker" \| "important" \| "nit"/);
+  assert.match(p, /"blocker" = a bug, security issue/);
+});
