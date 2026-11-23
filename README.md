@@ -26,7 +26,7 @@
 <td width="33%" valign="top">
 
 ### Reads the code
-Claude gets a read-only checkout of the PR, so it can open callers, types and tests, and still review big PRs whose diff gets cut off.
+Claude gets a read-only checkout of the PR, so it can open callers, types and tests. A big PR is reviewed in parts instead of being cut off.
 
 </td>
 <td width="33%" valign="top">
@@ -46,7 +46,7 @@ After new commits it gets its previous review and the changes since, says what's
 <td valign="top">
 
 ### Signal, not noise
-It skips points other reviewers already made, leaves lockfiles and build output out, labels each comment blocker, important or nit (hide the nits if you like), and suggests one-click fixes.
+It skips points other reviewers already made, leaves lockfiles and build output out, labels each comment blocker, important or nit (hide the nits if you like), follows your repo's own `REVIEW.md`, and suggests one-click fixes.
 
 </td>
 <td valign="top">
@@ -58,7 +58,7 @@ It runs with no shell, none of your MCP servers and none of your settings, and c
 <td valign="top">
 
 ### Fits herdr
-A watcher tab, a PR Panel pane, shortcuts and notifications. A `pr-panel` command works in any terminal.
+A watcher tab, a PR Panel pane, shortcuts and notifications. A `pr-panel` command works in any terminal, and `pr-panel doctor` checks that Claude works here.
 
 </td>
 </tr>
@@ -134,6 +134,7 @@ For each PR, Claude gets:
 - **the whole repo** at the PR's commit, so it can check callers, types and tests
 - **what other reviewers already said**, so it doesn't repeat them
 - on a re-review, **its previous review and the changes since**
+- your repo's **`REVIEW.md`** rules, if it has one ([see below](#review-rules-in-the-repo))
 
 It replies with a verdict (**approve**, **request changes** or **comment**), a summary, and comments on specific lines. Small, certain fixes come as GitHub **suggestions** (one line or several), so the author can apply them with one click. Up to 2 PRs are reviewed at once.
 
@@ -143,6 +144,8 @@ It replies with a verdict (**approve**, **request changes** or **comment**), a s
 - When you're only a *requested* reviewer, re-reviews stop once you've posted, because GitHub then takes you off the requested list. If the author asks you again, it reviews again.
 - On your own PRs, GitHub only allows a comment, so the review is posted as one.
 - Draft PRs wait until they're marked ready for review.
+- A diff over `maxDiffChars` is split into parts of whole files (at most `maxParts`), each reviewed on its own and merged into one review. Each part is a full run, so a big PR costs that many reviews. `"splitLarge": false` goes back to cutting it off.
+- Want it cheaper? [Smarter model choice](#smarter-model-choice) uses a lighter model for small or docs-only PRs.
 - When you post, GitHub gets **one review from your account**: the summary as the body, the line comments that are on, and a short "AI-assisted" note at the bottom.
 
 </details>
@@ -185,7 +188,7 @@ right now, and <kbd>?</kbd> shows all of them.
 | **Inbox** | AI reviews waiting for your final word: read, change, post or discard them |
 | **Repos** | which repos are watched. Add one by picking from your GitHub repos, remove one with <kbd>x</kbd> |
 | **Settings** | model, effort, final word, how often to check, and the rest |
-| **History** | what was posted, discarded or failed, and why |
+| **History** | what was posted, discarded or failed, how long each review took, and why |
 
 Open it with any of:
 
@@ -236,7 +239,8 @@ The top line shows whether the watcher is running and which PR it's reviewing ri
 | Key | Does |
 |---|---|
 | <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd> | scroll (<kbd>g</kbd> top, <kbd>G</kbd> bottom) |
-| <kbd>1</kbd>–<kbd>9</kbd> | turn a comment **off or on**. Off comments are struck through and not posted |
+| <kbd>1</kbd>–<kbd>9</kbd> | turn a comment **off or on**. Off comments are struck through and not posted. Each is tagged `blocker` or `nit` when it is one, and blockers come first |
+| <kbd>x</kbd> | when the review lists earlier comments as fixed (`resolveFixed`), turn off marking them resolved when you post |
 | <kbd>a</kbd> / <kbd>r</kbd> / <kbd>c</kbd> | set the verdict: approve / request changes / comment |
 | <kbd>e</kbd> | edit the summary in your editor, as Markdown |
 | <kbd>E</kbd> | edit everything (verdict, summary, comments) as JSON |
@@ -356,7 +360,7 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 | `maxParts` | `4` | most parts a big PR is split into; each part is a full AI run, so it costs that many reviews |
 | `minSeverity` | `"nit"` | hide comments below this level: `"nit"` shows all, `"important"` hides nits, `"blocker"` keeps only what must be fixed |
 | `repoRules` | `true` | also follow the repo's own `REVIEW.md` (see [Review rules in the repo](#review-rules-in-the-repo)) |
-| `maxDiffChars` | `150000` | longer diffs are cut off (with `readCode`, the AI can still open the files) |
+| `maxDiffChars` | `150000` | the most diff one run reads. A longer diff is split into parts (`splitLarge`); with `splitLarge` off it is cut off (with `readCode`, the AI can still open the files) |
 | `pollSeconds` | `180` | how often it checks GitHub |
 | `maxParallel` | `2` | how many PRs are reviewed at once |
 
