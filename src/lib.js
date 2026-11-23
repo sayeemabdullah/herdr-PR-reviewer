@@ -40,6 +40,7 @@ if [ ! -f "$ROOT/src/panel.js" ]; then
 fi
 export HERDR_PLUGIN_ID=${q(PLUGIN_ID)} HERDR_PLUGIN_CONFIG_DIR=${q(CONFIG_DIR)} HERDR_PLUGIN_STATE_DIR="$STATE"
 if [ "$1" = "doctor" ]; then shift; exec node "$ROOT/src/doctor.js" "$@"; fi
+if [ "$1" = "update" ]; then shift; exec node "$ROOT/src/update.js" "$@"; fi
 exec node "$ROOT/src/panel.js" "$@"
 `;
     fs.writeFileSync(LAUNCHER, script);
@@ -191,6 +192,8 @@ export const DEFAULTS = {
   repoRules: true, // also follow the repo's own REVIEW.md (read from the PR's base branch, never from the PR)
   footer: "\n\n---\n<sub>🤖 AI-assisted review via herdr pr-reviewer</sub>",
   autoStartWatcher: true,
+  checkForUpdates: true, // look for a newer release of this plugin about every 6 hours (one GitHub request)
+  autoUpdate: false, // install a newer release by itself (the watcher does it, when no review is running)
   agent: {
     // --restricted: no Bash/code-running tools, ignores your settings files, file tools confined to the
     // working directory. --strict-mcp-config: none of your MCP servers (Gmail, Drive…) are loaded.

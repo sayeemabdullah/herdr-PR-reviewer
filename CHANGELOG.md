@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Update tab.** PR Panel has a fifth tab, **Update** (`u`): the version you have, the newest release with its release notes, and
+  `Enter` to install it. A `↑0.7.0` on the tab (and one notification per version) says a newer release exists. It checks about
+  every 6 hours while the watcher runs, or when you press `c`.
+- **Automatic updates (opt-in).** `"autoUpdate": true`, or `a` in the Update tab: the watcher installs a newer release by itself when no
+  review is running, then restarts on the new version. Off by default. Only published `vX.Y.Z` releases of this repo, only newer ones, never a plugin
+  linked from a local folder; if the installed version isn't the one asked for, the old one is put back.
+- `pr-panel update` says whether there is a newer release; `pr-panel update --install` installs it. New settings: `checkForUpdates` (on), `autoUpdate` (off).
+
+## Unreleased
+
 - **Changed: only the repos you list are reviewed.** Before, a PR you were asked to review in a repo you never added was reviewed too.
   Now it is ignored unless you turn on `"onlyListedRepos": false` (Settings → **Which repos**). If you rely on the old behaviour,
   set that, or add the repos in the Repos tab. With no repos listed, the watcher waits and PR Panel tells you to add one.

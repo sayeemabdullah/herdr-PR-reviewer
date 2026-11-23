@@ -5,6 +5,7 @@ import {
   loadConfig, markReviewed, prKey, reviewPR, run, settingsFor, sleep, writeLauncher,
 } from "./lib.js";
 import { createReporter, releaseAgent, statusFor } from "./agent-status.js";
+import { autoUpdateStep, restartRequested, restartWatcher } from "./update.js";
 
 writeLauncher();
 
@@ -46,6 +47,22 @@ function showInbox() {
   lastInbox = text;
 }
 
+/** After an update: start a fresh watcher on the new code, once no review is running. */
+function restartIfUpdated() {
+  if (!restartRequested() || listActiveReviews().length) return;
+  log("Updated: restarting the watcher on the new version.");
+  restartWatcher();
+  process.exit(0);
+}
+
+/** Sleep, but notice an update (and restart) within a few seconds instead of after the whole wait. */
+async function wait(ms) {
+  for (let waited = 0; waited < ms; waited += 3000) {
+    restartIfUpdated();
+    await sleep(Math.min(3000, ms - waited));
+  }
+}
+
 console.log("PR Reviewer watcher — reviews PRs you're added to, and every PR in repos set to \"all\". Ctrl+C to stop.\n");
 
 while (true) {
@@ -54,12 +71,17 @@ while (true) {
     cfg = loadConfig();
   } catch (e) {
     log(`config error in ${CONFIG_FILE}: ${e.message}`);
-    await sleep(30_000);
+    await wait(30_000);
     continue;
   }
+  restartIfUpdated();
+  const update = autoUpdateStep(cfg);
+  if (["notified", "updated"].includes(update) || update.startsWith("failed")) log(`update: ${update}`);
+  restartIfUpdated();
+
   if (cfg.missing) {
     log("No repos to watch yet. Open PR Panel, go to Repos (r) and press a to add one.");
-    await sleep(30_000);
+    await wait(30_000);
     continue;
   }
 
@@ -119,5 +141,5 @@ while (true) {
   await Promise.all(workers);
   showInbox();
   log(`checked ${prs.length} PR(s); next check in ${cfg.pollSeconds}s`);
-  await sleep(cfg.pollSeconds * 1000);
+  await wait(cfg.pollSeconds * 1000);
 }

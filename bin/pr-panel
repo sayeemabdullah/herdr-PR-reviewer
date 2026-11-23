@@ -5,4 +5,5 @@ export HERDR_PLUGIN_ID=pr-reviewer
 export HERDR_PLUGIN_CONFIG_DIR="${HERDR_PLUGIN_CONFIG_DIR:-$HOME/.config/herdr/plugins/config/pr-reviewer}"
 export HERDR_PLUGIN_STATE_DIR="${HERDR_PLUGIN_STATE_DIR:-$HOME/.local/state/herdr/plugins/pr-reviewer}"
 if [ "$1" = "doctor" ]; then shift; exec node "$DIR/src/doctor.js" "$@"; fi
+if [ "$1" = "update" ]; then shift; exec node "$DIR/src/update.js" "$@"; fi
 exec node "$DIR/src/panel.js" "$@"

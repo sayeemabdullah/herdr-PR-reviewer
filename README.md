@@ -179,8 +179,8 @@ A setting on a repo wins over the one at the top.
 
 ## PR Panel
 
-Everything in one place, in four tabs. Move between them with <kbd>Tab</kbd>, or jump with
-<kbd>i</kbd> <kbd>r</kbd> <kbd>s</kbd> <kbd>h</kbd>. The bottom line always shows the keys you can press
+Everything in one place, in five tabs. Move between them with <kbd>Tab</kbd>, or jump with
+<kbd>i</kbd> <kbd>r</kbd> <kbd>s</kbd> <kbd>h</kbd> <kbd>u</kbd>. The bottom line always shows the keys you can press
 right now, and <kbd>?</kbd> shows all of them.
 
 | Tab | What it's for |
@@ -189,6 +189,7 @@ right now, and <kbd>?</kbd> shows all of them.
 | **Repos** | which repos are watched. Add one by picking from your GitHub repos, remove one with <kbd>x</kbd> |
 | **Settings** | model and effort, final word, cheaper model for small PRs, big-PR limits, repos and authors to skip, how often to check, and more |
 | **History** | what was posted, discarded or failed, how long each review took, and why |
+| **Update** | the version you have, the newest release and what's new in it, and a key to install it. [More below](#update) |
 
 Open it with any of:
 
@@ -283,6 +284,7 @@ A change that would break the config isn't saved, and the panel tells you why.
 | Reviews | final word, **model** (opus, fable, sonnet, haiku, or type any model name), effort, read the whole repo, AI may approve, which comments to show, repo rules, resolve fixed comments, re-review new commits, skip draft PRs, your own instructions |
 | Smarter model | cheaper model for small or docs-only PRs: the model and effort, what counts as small, and the risky and docs path lists |
 | Big PRs and diffs | review in parts, the diff limit, most parts, paths left out of the diff, the time limit per review |
+| Updates | check for new releases, and update automatically |
 | Watcher | **which repos** (only the ones you listed, or any you're asked on), repos never to review, authors to skip (bots), how often to check, reviews at once, start with herdr, desktop notifications |
 
 A list (repos to skip, risky paths, …) is typed as comma separated text: press <kbd>Enter</kbd>, edit, <kbd>Enter</kbd> again.
@@ -294,6 +296,25 @@ A list (repos to skip, risky paths, …) is typed as comma separated text: press
 | <kbd>→</kbd> / <kbd>←</kbd> | next / previous option (model, effort) |
 | <kbd>t</kbd> | type a model name, e.g. a full one like `claude-opus-5-5` |
 | <kbd>E</kbd> | open `config.json` in your editor, for everything else (`ignorePaths`, `instructions`, …) |
+
+<a id="update"></a>
+
+### Update
+
+PR Reviewer is installed from GitHub, and herdr doesn't update it by itself. The **Update** tab (<kbd>u</kbd>) does:
+
+- it shows the version you have, the newest release and **what's new** in it (the release notes). A `↑0.7.0` on the tab says a newer one exists;
+- <kbd>Enter</kbd> installs it (asks first). The watcher restarts on the new version once no review is running, and you reopen PR Panel (<kbd>q</kbd>) to use it;
+- <kbd>c</kbd> checks GitHub now, otherwise it looks about every 6 hours while the watcher runs, and tells you once per version;
+- <kbd>a</kbd> turns **automatic updates** on: the watcher then installs a newer release by itself, when no review is running, and restarts. It is **off by default**, because it installs code on your machine without asking.
+
+Without the panel: `pr-panel update` says whether there is a newer release, and `pr-panel update --install` installs it. Or reinstall by hand:
+`herdr plugin install sayeemabdullah/herdr-PR-reviewer`.
+
+What it will and won't do: it installs only a **published release** of this repo (`vX.Y.Z`), never `master`, only one **newer** than yours, and never over a plugin you linked from a local folder. It uses herdr's own `plugin install`, so your `config.json` and your inbox stay as they are. If the result isn't the version it asked for, it puts the old one back. Turn the checking off with `"checkForUpdates": false`.
+
+> [!NOTE]
+> The Update tab arrives with the release that adds it. Install that one by hand once (the command above); after that it can update itself.
 
 ### Shortcuts
 
@@ -326,6 +347,8 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 |---|---|---|
 | `review` | `"requested"` | `"all"` or `"requested"`, see [Quick start](#quick-start) |
 | `onlyListedRepos` | `true` | `true`: only the repos in `repos` are reviewed. `false`: also any repo where you're asked to review |
+| `checkForUpdates` | `true` | look for a newer release of this plugin about every 6 hours (one GitHub request) and tell you |
+| `autoUpdate` | `false` | install a newer release by itself (the watcher does it, when no review is running) |
 | `ignoreRepos` | `[]` | repos that are never sent to the AI |
 | `ignoreAuthors` | bots | PR authors to skip |
 | `skipDrafts` | `true` | leave draft PRs alone |
