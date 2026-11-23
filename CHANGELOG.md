@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 - **Changed: only the repos you list are reviewed.** Before, a PR you were asked to review in a repo you never added was reviewed too.
   Now it is ignored unless you turn on `"onlyListedRepos": false` (Settings → **Which repos**). If you rely on the old behaviour,
