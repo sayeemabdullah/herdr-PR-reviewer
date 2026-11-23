@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/header.png" alt="herdr + AI + GitHub" width="420">
+<img src="assets/header.png" alt="herdr + Claude Code, Codex, Gemini CLI, Cursor, opencode + GitHub" width="640">
 
 # PR Reviewer for herdr
 
