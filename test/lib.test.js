@@ -39,3 +39,14 @@ test("a typo in review is an error, not silently 'requested'", () => {
   writeConfig({ repos: [{ repo: "me/my-app", review: "everything" }] });
   assert.throws(() => loadConfig(), /"review" must be "all" or "requested"/);
 });
+
+test("formatDuration: seconds, minutes, hours, and nothing for a missing time", async () => {
+  const { formatDuration } = await import("../src/lib.js");
+  assert.equal(formatDuration(0), "0s");
+  assert.equal(formatDuration(42.4), "42s");
+  assert.equal(formatDuration(190), "3m 10s");
+  assert.equal(formatDuration(3700), "1h 1m");
+  assert.equal(formatDuration(null), "");
+  assert.equal(formatDuration(undefined), "");
+  assert.equal(formatDuration(-3), "");
+});
