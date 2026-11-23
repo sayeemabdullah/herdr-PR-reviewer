@@ -13,6 +13,7 @@ import {
   CONFIG_FILE, ROOT, deleteDraft, formatDuration, getReviewed, listActiveReviews, listDrafts, loadConfig, markReviewed,
   parsePRUrl, postReview, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
+import { applyUpdate, cannotUpdateReason, checkForUpdate, installSource, installedVersion, readUpdateState } from "./update.js";
 import {
   FIELDS, MODELS, addRepo, cycle, effective, listText, parseList, parseNumber, parseRepo, readRaw, removeRepo, repoList,
   setRepoValue, setValue, writeRaw,
@@ -108,7 +109,9 @@ if (!process.stdin.isTTY || !process.stdout.isTTY) {
 // ---------- state ----------
 
 const out = process.stdout;
-const TABS = ["inbox", "repos", "settings", "history"];
+const TABS = ["inbox", "repos", "settings", "history", "update"];
+const RUNNING_VERSION = installedVersion(); // what this panel loaded; after an update the folder says something newer
+let updSrc = null; // how the plugin was installed, looked up when the Update tab opens
 let tab = "inbox";
 let drafts = [];
 let cur = null; // review open in the inbox (detail view)
@@ -180,11 +183,13 @@ function statusRight() {
 function tabStrip(W) {
   const { raw } = readRawSafe();
   const count = { inbox: drafts.length, repos: raw ? repoList(raw).length : 0 };
-  const name = { inbox: "Inbox", repos: "Repos", settings: "Settings", history: "History" };
+  const name = { inbox: "Inbox", repos: "Repos", settings: "Settings", history: "History", update: "Update" };
+  const next = readUpdateState().releases?.[0];
+  if (next) count.update = `↑${next.version}`;
   const parts = TABS.map((t) => {
     const n = count[t] !== undefined ? ` ${count[t]}` : "";
     if (t === tab) return paint(` ${name[t]}${n} `, "inv", "cyan", "bold");
-    return " " + paint(name[t], "bold") + (n ? paint(n, t === "inbox" && count[t] ? "yellow" : "gray") : "") + " ";
+    return " " + paint(name[t], "bold") + (n ? paint(n, (t === "inbox" || t === "update") && count[t] ? "yellow" : "gray") : "") + " ";
   });
   const left = paint(" PR Panel ", "inv", "bold") + "  " + parts.join(paint("│", "gray"));
   return [bar(left, statusRight(), W), rule(W)];
@@ -595,6 +600,113 @@ function renderHistory(W, H) {
   return [...head, ...pad(body.slice(scroll, scroll + bodyH), bodyH), ...foot];
 }
 
+// ---------- Update ----------
+
+/** Opening the tab: find out how the plugin was installed, and look for a release if the last look is old. */
+function openUpdateTab() {
+  updSrc = null;
+  setImmediate(() => {
+    try { updSrc = installSource(); } catch { updSrc = { kind: "unknown", canUpdate: false }; }
+    const { raw } = readRawSafe();
+    const st = readUpdateState();
+    if ((!raw || effective(raw, "checkForUpdates")) && (!st.checkedAt || Date.now() - st.checkedAt > 3600 * 1000)) checkUpdateNow(false);
+    else render();
+  });
+}
+
+function checkUpdateNow(force = true) {
+  busy = "Checking GitHub for a newer release…";
+  render();
+  setImmediate(() => {
+    const st = checkForUpdate({ force, maxAgeMs: 3600 * 1000 }); // opening the tab: a look from the last hour is fresh enough
+    busy = null;
+    if (force) setFlash(st.error ? `Couldn't check: ${st.error}` : st.releases?.[0] ? `${st.releases[0].version} is available.` : "You're up to date.", st.error ? "red" : "green");
+    render();
+  });
+}
+
+function askUpdate(next) {
+  confirm = {
+    label: `Update ${installedVersion()} → ${next.version}? The watcher restarts when no review is running.`,
+    onYes: () => {
+      busy = `Installing ${next.version}…`;
+      render();
+      setImmediate(() => {
+        try {
+          const r = applyUpdate(next.tag);
+          try { updSrc = installSource(); } catch {}
+          setFlash(`Updated ${r.from} → ${r.to}. Press q and reopen PR Panel to use it.`, "green", 20000);
+        } catch (e) {
+          setFlash(String(e.message).split("\n")[0], "red", 10000);
+        }
+        busy = null;
+        render();
+      });
+    },
+  };
+}
+
+function renderUpdate(W, H) {
+  const head = tabStrip(W);
+  const st = readUpdateState();
+  const now = installedVersion();
+  const next = st.releases?.[0];
+  const { raw } = readRawSafe();
+  const auto = raw ? effective(raw, "autoUpdate") : false;
+  const checks = raw ? effective(raw, "checkForUpdates") : true;
+  const restart = now && RUNNING_VERSION && now !== RUNNING_VERSION;
+  const row = (a, b) => `    ${paint(a.padEnd(22), "gray")}${b}`;
+  const ago = (t) => (age(t) === "now" ? "just now" : `${age(t)} ago`);
+  const body = [""];
+  body.push(row("Installed", paint(now ?? "?", "bold") + (restart ? paint(`   this panel is still running ${RUNNING_VERSION}: press q and reopen it`, "yellow", "bold") : "")));
+  body.push(row("Latest release", next ? paint(next.version, "green", "bold") + paint("   a newer version is available", "green")
+    : st.error && !st.checkedAt ? paint("couldn't check", "red")
+    : st.checkedAt ? paint("you're up to date", "green") : paint("not checked yet", "gray")));
+  body.push(row("Checked", st.checkedAt ? ago(st.checkedAt) + (st.error ? paint(`   last try failed: ${st.error}`, "red") : "") : paint(st.error ? st.error : "never", st.error ? "red" : "gray")));
+  body.push(row("Installed from", !updSrc ? paint("…", "gray") : updSrc.kind === "github" ? `GitHub, ${updSrc.ref}` : updSrc.kind === "other" ? "a local folder" : paint("unknown", "yellow")));
+  body.push(row("Check for updates", checks ? paint("on ", "green", "bold") + paint("about every 6 hours", "gray") : paint("off", "yellow", "bold") + paint(" turn on in Settings", "gray")));
+  body.push(row("Update automatically", auto ? paint("on ", "green", "bold") + paint("the watcher installs new releases when no review is running", "gray") : paint("off", "yellow", "bold") + paint("  press a to turn on", "gray")));
+  if (st.updateError) body.push(row("Last update failed", paint(st.updateError, "red")));
+  if (st.lastUpdate) body.push(row("Last updated", `${st.lastUpdate.from} → ${st.lastUpdate.to}, ${ago(st.lastUpdate.at)}`));
+  if (next && updSrc && !updSrc.canUpdate) body.push("", paint(`    Can't update from here. ${cannotUpdateReason(updSrc)}`, "yellow"));
+  if (next) {
+    body.push("", paint(` What's new`, "bold", "blue"));
+    for (const r of st.releases.slice(0, 4)) {
+      body.push("", paint(`  ${r.version}`, "bold", "green") + paint(r.publishedAt ? `  ${ago(r.publishedAt)}` : "", "gray"));
+      for (const l of wrap(r.body || "(no release notes)", W - 4, "    ")) body.push(md(l));
+    }
+  } else if (st.checkedAt && !st.error) {
+    body.push("", paint("    You have the newest release. It is checked again about every 6 hours while the watcher runs.", "gray"));
+  }
+  const can = next && updSrc?.canUpdate;
+  const pairs = [...(can ? [["⏎", `update to ${next.version}`]] : []), ["c", "check now"], ["a", "auto-update on/off"], ["↑↓", "scroll"], ...GLOBAL_KEYS];
+  const foot = bottom(pairs, can ? "Installs that release from GitHub with herdr, then restarts the watcher." : "", W);
+  const bodyH = H - head.length - foot.length;
+  scroll = Math.max(0, Math.min(scroll, body.length - bodyH));
+  return [...head, ...pad(body.slice(scroll, scroll + bodyH), bodyH), ...foot];
+}
+
+function updateKey(str, k) {
+  const st = readUpdateState();
+  const next = st.releases?.[0];
+  if (k === "up" || k === "k") { scroll = Math.max(0, scroll - 1); return true; }
+  if (k === "down" || k === "j") { scroll++; return true; }
+  if (str === "c") { checkUpdateNow(true); return true; }
+  if (str === "a") {
+    const { raw } = readRawSafe();
+    if (!raw) return false;
+    const v = !effective(raw, "autoUpdate");
+    saveSettings((c) => setValue(c, "autoUpdate", v), v ? "Automatic updates on: the watcher installs new releases." : "Automatic updates off.");
+    return true;
+  }
+  if (k === "return" && next) {
+    if (!updSrc?.canUpdate) { setFlash(updSrc ? cannotUpdateReason(updSrc) : "Still looking up how this was installed…", "yellow", 6000); return true; }
+    askUpdate(next);
+    return true;
+  }
+  return false;
+}
+
 // ---------- Help ----------
 
 function renderHelp(W, H) {
@@ -602,7 +714,7 @@ function renderHelp(W, H) {
   const foot = bottom([["any key", "close"]], "", W);
   const k = (a, b) => `    ${paint(a.padEnd(12), "cyan", "bold")}${b}`;
   const left = ["", paint(" Moving around", "bold", "blue"),
-    k("tab", "next tab (shift+tab: previous)"), k("i r s h", "Inbox, Repos, Settings, History"), k("esc", "back"), k("q", "quit"),
+    k("tab", "next tab (shift+tab: previous)"), k("i r s h u", "Inbox, Repos, Settings, History, Update"), k("esc", "back"), k("q", "quit"),
     "", paint(" Inbox", "bold", "blue"),
     k("⏎", "open a review"), k("p", "post it to GitHub (asks first)"), k("d", "discard it, nothing is posted"),
     k("a / r / c", "inside a review: approve / request changes / comment"), k("1-9", "inside a review: turn a comment on or off"),
@@ -611,7 +723,9 @@ function renderHelp(W, H) {
     k("a", "add a repo: search your GitHub repos, or type owner/repo"), k("x", "remove the selected repo"),
     k("⏎", "every PR / only when you're asked"), k("f / m", "final word / model for that repo only"),
     "", paint(" Settings", "bold", "blue"),
-    k("⏎ ←→", "change the selected setting"), k("t", "type any model name"), k("E", "edit config.json in your editor")];
+    k("⏎ ←→", "change the selected setting"), k("t", "type any model name"), k("E", "edit config.json in your editor"),
+    "", paint(" Update", "bold", "blue"),
+    k("⏎", "install the newer release"), k("c", "check GitHub now"), k("a", "turn automatic updates on or off")];
   const half = Math.floor(W / 2);
   const body = W >= 110
     ? Array.from({ length: Math.max(left.length, right.length) }, (_, i) => fit(left[i] ?? "", half) + (right[i] ?? ""))
@@ -626,6 +740,7 @@ function render() {
     : tab === "inbox" ? renderInbox(W, H)
     : tab === "repos" ? renderRepos(W, H)
     : tab === "settings" ? renderSettings(W, H)
+    : tab === "update" ? renderUpdate(W, H)
     : renderHistory(W, H);
   out.write("\x1b[H" + lines.slice(0, H).map((l) => fit(l, W)).join("\r\n") + "\x1b[J");
 }
@@ -791,6 +906,7 @@ function quit() {
 }
 function goTab(t) {
   tab = t;
+  if (t === "update") openUpdateTab();
   scroll = 0;
   picker = null;
   if (t !== "inbox") cur = null;
@@ -828,6 +944,7 @@ function onKey(str, key = {}) {
 
   if (tab === "repos" && reposKey(str, k)) return render();
   if (tab === "settings" && settingsKey(str, k)) return render();
+  if (tab === "update" && updateKey(str, k)) return render();
 
   if (tab === "inbox" && cur) {
     const d = cur, page = Math.max(1, (out.rows || 24) - 10);
@@ -864,6 +981,7 @@ function onKey(str, key = {}) {
   if (str === "r") { goTab("repos"); return render(); }
   if (str === "s") { goTab("settings"); return render(); }
   if (str === "h") { goTab("history"); return render(); }
+  if (str === "u") { goTab("update"); return render(); }
 
   if (tab === "inbox") {
     const d = drafts[sel.inbox];
