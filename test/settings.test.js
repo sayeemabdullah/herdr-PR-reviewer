@@ -87,3 +87,18 @@ test("a change that would break the config is rolled back", () => {
   assert.throws(() => S.writeRaw(raw), /"review" must be/);
   assert.equal(fs.readFileSync(CONFIG_FILE, "utf8"), before);
 });
+
+test("minSeverity is a setting, saved only when it isn't the default, and a wrong value is refused", () => {
+  const raw = S.readRaw();
+  assert.ok(S.FIELDS.some((f) => f.key === "minSeverity"));
+  S.setValue(raw, "minSeverity", "blocker");
+  S.writeRaw(raw);
+  assert.equal(loadConfig().minSeverity, "blocker");
+  const again = S.readRaw();
+  S.setValue(again, "minSeverity", "nit");
+  S.writeRaw(again);
+  assert.equal("minSeverity" in JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")), false);
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")), minSeverity: "huge" }));
+  assert.throws(() => loadConfig(), /minSeverity/);
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")), minSeverity: "nit" }));
+});

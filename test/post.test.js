@@ -77,3 +77,20 @@ test("a multi-line suggestion is posted with start_line / start_side; a bad rang
     { path: "a.js", line: 4, side: "RIGHT", body: "backwards" },
   ]);
 });
+
+test("nits and blockers are labelled in what is posted", () => {
+  fs.rmSync(log, { force: true });
+  delete process.env.FAIL_FILE;
+  postReview({
+    ...draft,
+    comments: [
+      { path: "a.js", line: 1, body: "must fix", severity: "blocker" },
+      { path: "a.js", line: 2, body: "consider", severity: "important" },
+      { path: "a.js", line: 3, body: "rename", severity: "nit" },
+      { path: "a.js", line: null, body: "whole file", severity: "nit" },
+    ],
+  }, { footer: "" });
+  const c = calls().filter((x) => x.body);
+  assert.deepEqual(c[0].body.comments.map((x) => x.body), ["**blocker:** must fix", "consider", "**nit:** rename"]);
+  assert.equal(c[1].body.body, "**nit:** whole file");
+});
