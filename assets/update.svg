@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="420" viewBox="0 0 920 420" role="img" aria-label="PR Panel, Update tab: the installed version, the newest release, what is new in it, and the keys to update">
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #c9d1d9; white-space: pre; }
+    .b { font-weight: 700; fill: #f0f6fc; }
+    .dim { fill: #8b949e; }
+    .yel { fill: #e3b341; }
+    .grn { fill: #3fb950; }
+    .cya { fill: #39c5cf; }
+    .b2 { font-weight: 700; }
+    .blu { fill: #58a6ff; font-weight: 700; }
+    .badge { font-weight: 700; fill: #0d1117; }
+    .red { fill: #f85149; }
+    .rule { stroke: #30363d; stroke-width: 1; }
+  </style>
+
+  <!-- window -->
+  <rect x="0.5" y="0.5" width="919" height="419" rx="12" fill="#0d1117" stroke="#30363d"/>
+  <rect x="0.5" y="0.5" width="919" height="34" rx="12" fill="#161b22"/>
+  <rect x="0.5" y="22" width="919" height="13" fill="#161b22"/>
+  <circle cx="22" cy="18" r="6" fill="#ff5f57"/>
+  <circle cx="42" cy="18" r="6" fill="#febc2e"/>
+  <circle cx="62" cy="18" r="6" fill="#28c840"/>
+  <text x="460" y="22" text-anchor="middle" class="dim">pr-panel</text>
+  <line x1="0" y1="35" x2="920" y2="35" class="rule"/>
+
+  <!-- header -->
+  <rect x="16" y="48" width="78" height="20" rx="3" fill="#f0f6fc"/><text x="55" y="62" text-anchor="middle" class="badge">PR Panel</text><text x="106" y="62"><tspan class="b">Inbox</tspan> <tspan class="dim">3</tspan><tspan class="dim">  │  </tspan><tspan class="b">Repos</tspan> <tspan class="dim">2</tspan><tspan class="dim">  │  </tspan><tspan class="b">Settings</tspan><tspan class="dim">  │  </tspan><tspan class="b">History</tspan><tspan class="dim">  │  </tspan></text><rect x="492" y="48" width="108" height="20" rx="3" fill="#39c5cf"/><text x="546" y="62" text-anchor="middle" class="badge">Update ↑0.7.0</text>
+  <text x="900" y="62" text-anchor="end"><tspan class="grn">● watching</tspan></text>
+  <line x1="20" y1="76" x2="900" y2="76" class="rule"/>
+
+  <text x="24" y="104"><tspan class="dim">Installed             </tspan><tspan class="b">0.6.0</tspan></text>
+  <text x="24" y="126"><tspan class="dim">Latest release        </tspan><tspan class="grn b2">0.7.0</tspan>   <tspan class="grn">a newer version is available</tspan></text>
+  <text x="24" y="148"><tspan class="dim">Checked               </tspan>12m ago</text>
+  <text x="24" y="170"><tspan class="dim">Installed from        </tspan>GitHub, v0.6.0</text>
+  <text x="24" y="192"><tspan class="dim">Check for updates     </tspan><tspan class="grn b2">on </tspan><tspan class="dim">about every 6 hours</tspan></text>
+  <text x="24" y="214"><tspan class="dim">Update automatically  </tspan><tspan class="yel b2">off</tspan><tspan class="dim">  press a to turn on</tspan></text>
+  <text x="20" y="250" class="blu">What's new</text>
+  <text x="24" y="274"><tspan class="grn b2">0.7.0</tspan><tspan class="dim">  just now</tspan></text>
+  <text x="40" y="296">• <tspan class="b">Update tab.</tspan> The version you have, the newest release with its notes, and Enter to install it.</text>
+  <text x="40" y="316">• <tspan class="b">Automatic updates (opt-in).</tspan> The watcher installs a newer release when no review is running.</text>
+  <text x="40" y="336">• <tspan class="cya">pr-panel update</tspan> says whether there is a newer release; <tspan class="cya">--install</tspan> installs it.</text>
+
+  <line x1="20" y1="358" x2="900" y2="358" class="rule"/>
+  <text x="20" y="380"><tspan class="cya b2">⏎</tspan> <tspan class="dim">update to 0.7.0</tspan>   <tspan class="cya b2">c</tspan> <tspan class="dim">check now</tspan>   <tspan class="cya b2">a</tspan> <tspan class="dim">auto-update on/off</tspan>   <tspan class="cya b2">↑↓</tspan> <tspan class="dim">scroll</tspan>   <tspan class="cya b2">tab</tspan> <tspan class="dim">next tab</tspan>   <tspan class="cya b2">?</tspan> <tspan class="dim">help</tspan>   <tspan class="cya b2">q</tspan> <tspan class="dim">quit</tspan></text>
+  <text x="20" y="402" class="dim">Installs that release from GitHub with herdr, then restarts the watcher.</text>
+</svg>

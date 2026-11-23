@@ -301,6 +301,8 @@ A list (repos to skip, risky paths, …) is typed as comma separated text: press
 
 ### Update
 
+<img src="assets/update.svg" alt="PR Panel, Update tab" width="860">
+
 PR Reviewer is installed from GitHub, and herdr doesn't update it by itself. The **Update** tab (<kbd>u</kbd>) does:
 
 - it shows the version you have, the newest release and **what's new** in it (the release notes). A `↑0.7.0` on the tab says a newer one exists;
