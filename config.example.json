@@ -10,7 +10,6 @@
   "readCode": true,
   "ignoreRepos": [],
   "ignoreAuthors": ["dependabot[bot]", "renovate[bot]"],
-  "onlyListedRepos": false,
   "pollSeconds": 180,
   "maxParallel": 2,
   "maxDiffChars": 150000,

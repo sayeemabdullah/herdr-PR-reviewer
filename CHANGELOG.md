@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Changed: only the repos you list are reviewed.** Before, a PR you were asked to review in a repo you never added was reviewed too.
+  Now it is ignored unless you turn on `"onlyListedRepos": false` (Settings → **Which repos**). If you rely on the old behaviour,
+  set that, or add the repos in the Repos tab. With no repos listed, the watcher waits and PR Panel tells you to add one.
+- **Many more settings in PR Panel.** The Settings tab now also has: your own instructions, the smarter-model options (cheap effort,
+  what counts as small, risky and docs paths), the diff limit and most parts, paths left out of the diff, the time limit per review,
+  repos to never review, authors to skip, and start with herdr. Lists are typed as comma separated text.
+
 ## 0.5.0
 
 - **Smarter model choice (opt-in).** With `"smartModel": true`, docs-only PRs and small ones (at most 3 files and 60 lines)

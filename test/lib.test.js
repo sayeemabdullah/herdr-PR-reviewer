@@ -22,7 +22,7 @@ test("a repo set to all reviews every PR; others only the ones you're added to",
 });
 
 test("the round's PRs: every PR of an all repo plus requested ones, each once", () => {
-  writeConfig({ repos: [{ repo: "me/my-app", review: "all" }], ignoreRepos: ["secret/repo"] });
+  writeConfig({ repos: [{ repo: "me/my-app", review: "all" }], ignoreRepos: ["secret/repo"], onlyListedRepos: false });
   const cfg = loadConfig();
   const requested = [pr("me/my-app", 1), pr("team/team-app", 7), pr("secret/repo", 3)];
   const fromAll = [pr("me/my-app", 1), pr("me/my-app", 2)];
@@ -49,4 +49,23 @@ test("formatDuration: seconds, minutes, hours, and nothing for a missing time", 
   assert.equal(formatDuration(null), "");
   assert.equal(formatDuration(undefined), "");
   assert.equal(formatDuration(-3), "");
+});
+
+test("by default only the repos you listed are reviewed; other repos you're asked on are ignored", () => {
+  writeConfig({ repos: [{ repo: "me/my-app", review: "all" }] });
+  const cfg = loadConfig();
+  assert.equal(cfg.onlyListedRepos, true);
+  assert.deepEqual(mergePRs(cfg, [pr("me/my-app", 1), pr("work/big-repo", 7)], [pr("me/my-app", 2)]).map((p) => `${p.repo}#${p.number}`), ["me/my-app#2", "me/my-app#1"]);
+});
+
+test("onlyListedRepos: false brings back reviewing every repo you're asked on", () => {
+  writeConfig({ repos: [{ repo: "me/my-app" }], onlyListedRepos: false });
+  assert.deepEqual(mergePRs(loadConfig(), [pr("work/big-repo", 7)], []).map((p) => p.number), [7]);
+});
+
+test("with the default and no repos listed, the watcher has nothing to do and says why", () => {
+  writeConfig({ repos: [] });
+  assert.equal(loadConfig().missing, true);
+  writeConfig({ repos: [], onlyListedRepos: false });
+  assert.equal(loadConfig().missing, false);
 });

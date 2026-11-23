@@ -12,6 +12,9 @@ export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
  *   bool:   on / off (labels for each)
  *   choice: cycles through `options`; "custom" lets you type any value (e.g. a full model name)
  *   number: typed in, between min and max
+ *   text:   one line of text
+ *   list:   comma separated values (`validate: "repo"` checks each is owner/repo)
+ * A key like "agent.timeoutSeconds" is a value inside a group in config.json.
  */
 export const FIELDS = [
   { section: "Reviews" },
@@ -20,22 +23,39 @@ export const FIELDS = [
     help: "Claude model for reviews. Opus finds the most; Sonnet and Haiku are faster and cheaper." },
   { key: "effort", type: "choice", label: "Effort", options: EFFORTS,
     help: "How hard the model thinks. Higher is slower and costs more." },
-  { key: "smartModel", type: "bool", label: "Smarter model", on: "cheaper model for small / docs PRs", off: "always the model above" },
-  { key: "cheapModel", type: "choice", label: "Cheap model", options: MODELS, custom: true,
-    help: "Used for small or docs-only PRs when Smarter model is on. Risky files always get the model above." },
   { key: "readCode", type: "bool", label: "Read the whole repo", on: "yes (read-only checkout)", off: "diff only" },
   { key: "allowApprove", type: "bool", label: "AI may approve", on: "yes", off: "never, only comment / request changes" },
-  { key: "splitLarge", type: "bool", label: "Big PRs", on: "review in parts", off: "cut off at maxDiffChars" },
   { key: "minSeverity", type: "choice", label: "Show comments", options: ["nit", "important", "blocker"],
     help: "nit = everything; important = hide nits; blocker = only what must be fixed. The summary is always kept." },
   { key: "repoRules", type: "bool", label: "Repo rules", on: "follow REVIEW.md in the repo", off: "ignore it" },
   { key: "resolveFixed", type: "bool", label: "Resolve fixed", on: "mark fixed comments resolved", off: "leave them open" },
   { key: "rereviewOnPush", type: "bool", label: "Re-review new commits", on: "yes", off: "no" },
   { key: "skipDrafts", type: "bool", label: "Skip draft PRs", on: "yes", off: "no" },
+  { key: "instructions", type: "text", label: "Your instructions",
+    help: "Extra things the reviewer should check, for every repo. One line here; press E for a longer text in the file." },
+  { section: "Smarter model (cheaper reviews for small PRs)" },
+  { key: "smartModel", type: "bool", label: "Smarter model", on: "cheaper model for small / docs PRs", off: "always the model above" },
+  { key: "cheapModel", type: "choice", label: "Cheap model", options: MODELS, custom: true,
+    help: "Used for small or docs-only PRs when Smarter model is on. Risky files always get the model above." },
+  { key: "cheapEffort", type: "choice", label: "Cheap effort", options: EFFORTS, help: "Effort for the cheap model." },
+  { key: "smallMaxLines", type: "number", label: "Small PR: most lines", min: 1, max: 5000, help: "Added plus removed lines. At or under this (and the file limit) a PR counts as small." },
+  { key: "smallMaxFiles", type: "number", label: "Small PR: most files", min: 1, max: 100 },
+  { key: "riskyPaths", type: "list", label: "Always full model for", help: "Paths (globs, comma separated). A PR touching one always gets your model and effort." },
+  { key: "docsPaths", type: "list", label: "Docs paths", help: "Paths (globs, comma separated). A PR with only these files counts as docs-only." },
+  { section: "Big PRs and diffs" },
+  { key: "splitLarge", type: "bool", label: "Big PRs", on: "review in parts", off: "cut off at the diff limit" },
+  { key: "maxDiffChars", type: "number", label: "Diff limit (characters)", min: 10000, max: 1000000, help: "The most diff one run reads. A longer diff is split into parts." },
+  { key: "maxParts", type: "number", label: "Most parts", min: 1, max: 8, help: "A big PR is split into at most this many parts. Each part is a full AI run, so it costs that many reviews." },
+  { key: "ignorePaths", type: "list", label: "Left out of the diff", help: "Paths (globs, comma separated) the AI doesn't see in the diff, such as lockfiles and build output." },
+  { key: "agent.timeoutSeconds", type: "number", label: "Time limit (seconds)", min: 60, max: 7200, help: "A review that takes longer than this is stopped." },
   { section: "Watcher" },
+  { key: "onlyListedRepos", type: "bool", label: "Which repos", on: "only the repos you listed", off: "also any repo you're asked on",
+    help: "On: PRs from repos you haven't added (in the Repos tab) are ignored, even when you're asked to review them." },
+  { key: "ignoreRepos", type: "list", label: "Never review these repos", validate: "repo", help: "owner/repo, comma separated. These are skipped even if listed or asked." },
+  { key: "ignoreAuthors", type: "list", label: "Skip PRs from", help: "GitHub logins, comma separated, such as bots (dependabot[bot])." },
   { key: "pollSeconds", type: "number", label: "Check every (seconds)", min: 30, max: 86400 },
   { key: "maxParallel", type: "number", label: "Reviews at once", min: 1, max: 8 },
-  { key: "onlyListedRepos", type: "bool", label: "Which repos", on: "only the repos below", off: "any repo where you're asked to review" },
+  { key: "autoStartWatcher", type: "bool", label: "Start with herdr", on: "the watcher opens by itself", off: "start it yourself" },
   { key: "desktopNotifications", type: "bool", label: "Desktop notifications", on: "macOS notifications too", off: "herdr notifications only" },
 ];
 
@@ -59,13 +79,33 @@ export function writeRaw(raw, file = CONFIG_FILE) {
   }
 }
 
+const getPath = (obj, key) => key.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+
 /** The value in effect: what the file says, else the default. */
-export const effective = (raw, key) => (raw[key] !== undefined ? raw[key] : DEFAULTS[key]);
+export const effective = (raw, key) => {
+  const v = getPath(raw, key);
+  return v !== undefined ? v : getPath(DEFAULTS, key);
+};
 
 /** Set a value; a value equal to the default is removed so the file stays short. Returns raw. */
 export function setValue(raw, key, value) {
-  if (JSON.stringify(value) === JSON.stringify(DEFAULTS[key])) delete raw[key];
-  else raw[key] = value;
+  const parts = key.split(".");
+  const last = parts.pop();
+  const isDefault = JSON.stringify(value) === JSON.stringify(getPath(DEFAULTS, key));
+  let holder = raw;
+  const trail = [];
+  for (const p of parts) {
+    if (holder[p] === undefined || holder[p] === null || typeof holder[p] !== "object") {
+      if (isDefault) return raw; // nothing there to remove
+      holder[p] = {};
+    }
+    trail.push([holder, p]);
+    holder = holder[p];
+  }
+  if (isDefault) delete holder[last];
+  else holder[last] = value;
+  // a group left empty by removing its last value goes away too
+  for (const [parent, p] of trail.reverse()) if (Object.keys(parent[p]).length === 0) delete parent[p];
   return raw;
 }
 
@@ -83,6 +123,16 @@ export function parseNumber(field, text) {
   if (n < field.min || n > field.max) throw new Error(`${field.label} must be between ${field.min} and ${field.max}`);
   return n;
 }
+
+/** Comma separated text to a list: trimmed, empties dropped, repeats dropped. A field with validate: "repo" checks owner/repo. */
+export function parseList(field, text) {
+  const items = [...new Set(String(text).split(",").map((t) => t.trim()).filter(Boolean))];
+  if (field.validate === "repo") return items.map((t) => parseRepo(t));
+  return items;
+}
+
+/** A list or text value as one line for showing and editing. */
+export const listText = (v) => (Array.isArray(v) ? v.join(", ") : String(v ?? ""));
 
 /** Repos in the file, normalised to objects, without the example placeholders. */
 export function repoList(raw) {

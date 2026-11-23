@@ -102,3 +102,84 @@ test("minSeverity is a setting, saved only when it isn't the default, and a wron
   assert.throws(() => loadConfig(), /minSeverity/);
   fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")), minSeverity: "nit" }));
 });
+
+test("every setting in the panel has a default, a type and sane limits", () => {
+  const keys = S.FIELDS.filter((f) => f.key).map((f) => f.key);
+  assert.equal(new Set(keys).size, keys.length, "no setting listed twice");
+  for (const f of S.FIELDS.filter((x) => x.key)) {
+    assert.notEqual(S.effective({}, f.key), undefined, `${f.key} has a default`);
+    assert.ok(["bool", "choice", "number", "list", "text"].includes(f.type), f.key);
+    if (f.type === "number") {
+      assert.ok(f.min <= f.max, f.key);
+      const d = S.effective({}, f.key);
+      assert.ok(d >= f.min && d <= f.max, `${f.key} default ${d} is inside ${f.min}..${f.max}`);
+    }
+    if (f.type === "list") assert.ok(Array.isArray(S.effective({}, f.key)), f.key);
+    if (f.type === "choice") assert.ok(f.options.includes(S.effective({}, f.key)) || f.custom, f.key);
+  }
+});
+
+test("the settings you'd expect are all in the panel", () => {
+  const keys = new Set(S.FIELDS.map((f) => f.key));
+  for (const k of ["onlyListedRepos", "ignoreRepos", "ignoreAuthors", "ignorePaths", "instructions", "autoStartWatcher", "maxDiffChars",
+    "maxParts", "cheapEffort", "smallMaxLines", "smallMaxFiles", "riskyPaths", "docsPaths", "agent.timeoutSeconds", "smartModel", "splitLarge"]) {
+    assert.ok(keys.has(k), k);
+  }
+});
+
+test("a setting inside a group (agent.timeoutSeconds) is saved there, and removed with the group when back at the default", () => {
+  const raw = {};
+  S.setValue(raw, "agent.timeoutSeconds", 300);
+  assert.deepEqual(raw, { agent: { timeoutSeconds: 300 } });
+  assert.equal(S.effective(raw, "agent.timeoutSeconds"), 300);
+  S.setValue(raw, "agent.timeoutSeconds", 900);
+  assert.deepEqual(raw, {}, "back at the default: the key and the empty group are gone");
+  const keep = { agent: { command: ["claude"], timeoutSeconds: 300 } };
+  S.setValue(keep, "agent.timeoutSeconds", 900);
+  assert.deepEqual(keep, { agent: { command: ["claude"] } }, "other keys in the group stay");
+  assert.deepEqual(S.setValue({}, "agent.timeoutSeconds", 900), {}, "setting the default on an empty file adds nothing");
+});
+
+test("a timeout saved from the panel reaches the reviewer", () => {
+  const raw = S.readRaw();
+  S.setValue(raw, "agent.timeoutSeconds", 120);
+  S.writeRaw(raw);
+  assert.equal(loadConfig().agent.timeoutSeconds, 120);
+  assert.ok(loadConfig().agent.command.includes("--restricted"), "the lockdown flags are still there");
+  const back = S.readRaw();
+  S.setValue(back, "agent.timeoutSeconds", 900);
+  S.writeRaw(back);
+});
+
+test("lists are typed as comma separated text: trimmed, no empties, no repeats", () => {
+  const f = S.FIELDS.find((x) => x.key === "ignoreAuthors");
+  assert.deepEqual(S.parseList(f, " dependabot[bot] , ,renovate[bot],dependabot[bot] "), ["dependabot[bot]", "renovate[bot]"]);
+  assert.deepEqual(S.parseList(f, ""), []);
+  assert.equal(S.listText(["a", "b"]), "a, b");
+  assert.equal(S.listText(undefined), "");
+});
+
+test("never-review repos must be owner/repo (a pasted GitHub link is fine)", () => {
+  const f = S.FIELDS.find((x) => x.key === "ignoreRepos");
+  assert.deepEqual(S.parseList(f, "BigGeo-GIV/bg-asterisk, https://github.com/a/b.git"), ["BigGeo-GIV/bg-asterisk", "a/b"]);
+  assert.throws(() => S.parseList(f, "not a repo"), /owner\/repo/);
+});
+
+test("ignoreRepos and onlyListedRepos set from the panel are saved and load back", () => {
+  const raw = S.readRaw();
+  S.setValue(raw, "ignoreRepos", ["work/big-repo"]);
+  S.setValue(raw, "onlyListedRepos", false);
+  S.writeRaw(raw);
+  const cfg = loadConfig();
+  assert.deepEqual(cfg.ignoreRepos, ["work/big-repo"]);
+  assert.equal(cfg.onlyListedRepos, false);
+  const back = S.readRaw();
+  S.setValue(back, "ignoreRepos", []);
+  S.setValue(back, "onlyListedRepos", true);
+  S.writeRaw(back);
+});
+
+test("the example config new installs start from doesn't pin onlyListedRepos, so the safe default applies", () => {
+  const example = JSON.parse(fs.readFileSync(new URL("../config.example.json", import.meta.url), "utf8"));
+  assert.equal("onlyListedRepos" in example, false);
+});
