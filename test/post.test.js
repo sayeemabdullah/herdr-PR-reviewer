@@ -57,3 +57,23 @@ test("if a file comment is rejected, it still reaches the PR as a normal comment
   assert.match(last.args, /issues\/7\/comments/);
   assert.match(last.body.body, /a\.js.*whole file/);
 });
+
+test("a multi-line suggestion is posted with start_line / start_side; a bad range is dropped", () => {
+  fs.rmSync(log, { force: true });
+  delete process.env.FAIL_FILE;
+  const sug = "```suggestion\nfixed\n```";
+  postReview({
+    ...draft,
+    comments: [
+      { path: "a.js", start_line: 2, line: 4, body: sug },
+      { path: "a.js", start_line: 4, line: 4, body: "not a range" },
+      { path: "a.js", start_line: 9, line: 4, body: "backwards" },
+    ],
+  }, { footer: "" });
+  const [r] = calls().filter((x) => x.body);
+  assert.deepEqual(r.body.comments, [
+    { path: "a.js", line: 4, side: "RIGHT", body: sug, start_line: 2, start_side: "RIGHT" },
+    { path: "a.js", line: 4, side: "RIGHT", body: "not a range" },
+    { path: "a.js", line: 4, side: "RIGHT", body: "backwards" },
+  ]);
+});
