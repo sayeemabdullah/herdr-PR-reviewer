@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **`pr-panel doctor`.** Runs a tiny review (a one-line PR with a planted bug) on Claude Code and says what to fix if it
+  fails: not installed, not signed in, timed out, or an answer the reviewer can't read. Also an action, `pr-reviewer.doctor`.
+  Errors from the Claude command now show the end of its output, where the reason is.
 - **Resolve fixed comments (opt-in).** With `"resolveFixed": true`, a re-review numbers its earlier comments and the AI names the ones the
   new commits clearly fixed. The inbox lists them (press `x` to turn it off for that review) and posting also marks those threads
   resolved on GitHub. Only your own open threads with the same file and text are touched.

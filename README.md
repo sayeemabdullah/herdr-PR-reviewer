@@ -98,7 +98,13 @@ $EDITOR "$(herdr plugin config-dir pr-reviewer)/config.json"
 | `"requested"` | only PRs where you're added as a reviewer **(default)** |
 | `"all"` | every open PR in the repo |
 
-**3. Start the watcher.** It also starts by itself with herdr, in a tab called **PR watcher**.
+**3. Check that Claude works.** Runs a tiny review and tells you what to fix if it can't (a missing sign-in, for example).
+
+```sh
+pr-panel doctor        # or: herdr plugin action invoke pr-reviewer.doctor
+```
+
+**4. Start the watcher.** It also starts by itself with herdr, in a tab called **PR watcher**.
 
 ```sh
 herdr plugin action invoke pr-reviewer.watch
