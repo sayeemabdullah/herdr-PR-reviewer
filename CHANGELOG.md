@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **How long each review took.** History has a TOOK column and the inbox header says "in 42s".
 - **Severity on every comment.** The AI marks each comment `blocker`, `important` or `nit`. The inbox lists blockers first
   and tags them, posted comments say `**blocker:**` or `**nit:**`, and the new `minSeverity` setting (also in the Settings tab)
   hides what's below a level. The summary is always kept.

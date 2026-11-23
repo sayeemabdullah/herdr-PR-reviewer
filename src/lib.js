@@ -231,6 +231,15 @@ const writeJson = (f, v) => {
   fs.renameSync(f + ".tmp", f);
 };
 
+/** 42 → "42s", 190 → "3m 10s", 3700 → "1h 1m". */
+export function formatDuration(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return "";
+  const s = Math.round(sec);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
 export const prKey = (repo, n) => `${repo.toLowerCase()}#${n}`;
 const keyFile = (key) => key.replace(/[^a-z0-9._-]/gi, "_") + ".json";
 
@@ -793,7 +802,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       }
     }
 
-    let review;
+    let review, seconds = null;
     try {
       // Follow-up review: what we said last time + what changed since.
       const prevState = getReviewed()[key];
@@ -812,6 +821,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
 
       const [cmd, ...args] = agentArgv(checkout ? settings.agent.codeCommand : settings.agent.command, settings);
       log(`  running ${cmd}${checkout ? " with read-only code access" : ""} …`);
+      const startedAt = Date.now();
       const stdout = await runAsync(cmd, args, {
         input: buildPrompt(pr, settings, {
           diff, skipped, codeAccess: !!checkout, previous, feedback, rules,
@@ -820,6 +830,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
         timeoutMs: settings.agent.timeoutSeconds * 1000,
         cwd: checkout?.dir ?? STATE_DIR, // without code access, keep the agent away from any project files
       });
+      seconds = Math.round((Date.now() - startedAt) / 1000);
       review = parseAgentOutput(stdout);
     } finally {
       checkout?.cleanup();
@@ -838,7 +849,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     }
 
     const draft = {
-      key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid,
+      key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid, seconds,
       verdict: review.verdict, summary: review.summary, comments: ok, createdAt: new Date().toISOString(),
     };
 
@@ -846,13 +857,13 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     const lastReview = { verdict: draft.verdict, summary: draft.summary, comments: draft.comments };
     if (settings.finalWord) {
       saveDraft(draft);
-      markReviewed(key, { sha: pr.headRefOid, status: "drafted", attempts: 0, error: null, lastReview });
+      markReviewed(key, { sha: pr.headRefOid, status: "drafted", attempts: 0, error: null, lastReview, seconds });
       notify("PR review needs your final word", `${repo}#${number}: ${draft.verdict} — open PR Panel (prefix+i or pr-panel)`, "request",
         { desktop: settings.desktopNotifications });
       return { status: "drafted", draft };
     }
     const event = postReview(draft, settings);
-    markReviewed(key, { sha: pr.headRefOid, status: "posted", event, attempts: 0, error: null, lastReview });
+    markReviewed(key, { sha: pr.headRefOid, status: "posted", event, attempts: 0, error: null, lastReview, seconds });
     notify("AI review posted", `${repo}#${number}: ${event}`, "done", { desktop: settings.desktopNotifications });
     return { status: "posted", event, draft };
   });

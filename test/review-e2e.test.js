@@ -10,7 +10,7 @@ import test from "node:test";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-e2e-")));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
-const { loadConfig, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
+const { getReviewed, loadConfig, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
 
 // "GitHub": a repo whose PR #1 head is a commit.
 const origin = path.join(tmp, "origin");
@@ -102,4 +102,12 @@ test("repoReviewRules asks for the base branch, and returns nothing when the fil
     assert.equal(repoReviewRules("o/r", "main"), "Always check input validation.");
     assert.equal(repoReviewRules("o/r", "feature-x"), "", "only the base branch name the stub knows answers");
   } finally { delete process.env.RULES_ON; }
+});
+
+test("how long the AI took is saved with the draft and in the review history", async () => {
+  fresh();
+  const r = await reviewPR(cfg({ finalWord: true }), "o/r", 1, { log: () => {} });
+  assert.equal(typeof r.draft.seconds, "number");
+  assert.ok(r.draft.seconds >= 0 && r.draft.seconds < 60);
+  assert.equal(getReviewed()["o/r#1"].seconds, r.draft.seconds);
 });
