@@ -165,11 +165,16 @@ export function applyUpdate(tag, { root = ROOT, install = herdrInstall, source =
     const res = install(tag);
     const now = installedVersion(root);
     if (!res.ok || now !== tag.slice(1)) {
-      if (now !== from) { try { install(`v${from}`); } catch {} } // it left something else behind: put the old one back
-      throw new Error(res.ok ? `installed, but the plugin still says ${now}` : `herdr couldn't install ${tag}: ${lastLine(res.stderr || res.stdout)}`);
+      let restored = "";
+      if (now !== from) { // it left something else behind: put the old one back, and say so if that fails too
+        let back = null;
+        try { back = install(`v${from}`); } catch {}
+        if (!back?.ok || installedVersion(root) !== from) restored = ` (and couldn't put ${from} back: run herdr plugin install ${UPDATE_REPO} --ref v${from})`;
+      }
+      throw new Error((res.ok ? `installed, but the plugin still says ${now}` : `herdr couldn't install ${tag}: ${lastLine(res.stderr || res.stdout)}`) + restored);
     }
     fs.writeFileSync(RESTART_FILE, JSON.stringify({ version: tag, at: Date.now() }));
-    writeUpdateState({ lastUpdate: { from, to: tag.slice(1), at: Date.now() }, installed: tag.slice(1), releases: [], latest: null, failedTag: null });
+    writeUpdateState({ lastUpdate: { from, to: tag.slice(1), at: Date.now() }, installed: tag.slice(1), releases: [], latest: null, failedTag: null, updateError: null });
     return { from, to: tag.slice(1) };
   } finally {
     releaseLock();

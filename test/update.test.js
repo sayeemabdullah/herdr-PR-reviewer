@@ -209,6 +209,26 @@ test("an install that fails half way, leaving something else behind, is rolled b
   assert.equal(installs().length, 2);
 });
 
+test("a successful update clears an earlier failure, so the panel stops showing it", () => {
+  reset();
+  fs.mkdirSync(process.env.HERDR_PLUGIN_STATE_DIR, { recursive: true });
+  fs.writeFileSync(path.join(process.env.HERDR_PLUGIN_STATE_DIR, "update.json"), JSON.stringify({ failedTag: "v0.6.0", updateError: "clone failed" }));
+  U.applyUpdate("v0.6.0", { root: FAKE_ROOT });
+  const st = U.readUpdateState();
+  assert.equal(st.updateError, null);
+  assert.equal(st.failedTag, null);
+});
+
+test("a rollback that works says nothing extra; one that fails tells you how to get the old version back", () => {
+  reset();
+  const wrongThenRestore = (tag) => { setVersion(tag === "v0.6.0" ? "0.5.9" : tag.slice(1)); return { ok: true, stdout: "", stderr: "" }; };
+  assert.throws(() => U.applyUpdate("v0.6.0", { root: FAKE_ROOT, install: wrongThenRestore }), (e) => /still says 0\.5\.9/.test(e.message) && !/couldn't put/.test(e.message));
+  assert.equal(U.installedVersion(FAKE_ROOT), "0.5.0");
+  reset();
+  const neverRestores = (tag) => { setVersion("0.5.9"); return { ok: tag === "v0.6.0", stdout: "", stderr: "boom" }; };
+  assert.throws(() => U.applyUpdate("v0.6.0", { root: FAKE_ROOT, install: neverRestores }), /couldn't put 0\.5\.0 back: run herdr plugin install sayeemabdullah\/herdr-PR-reviewer --ref v0\.5\.0/);
+});
+
 test("restarting the watcher starts a fresh one, detached, and clears the markers", () => {
   reset();
   const dir = process.env.HERDR_PLUGIN_STATE_DIR;
