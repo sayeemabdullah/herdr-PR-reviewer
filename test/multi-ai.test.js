@@ -10,7 +10,7 @@ import test from "node:test";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-test-")));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
-const { combineOpinions, loadConfig, repoReviewRules, reviewPR, listDrafts, deleteDraft, getReviewed } = await import("../src/lib.js");
+const { combineOpinions, loadConfig, markReviewed, repoReviewRules, reviewPR, listDrafts, deleteDraft, getReviewed } = await import("../src/lib.js");
 
 // "GitHub": a repo whose PR #1 head also carries files a malicious PR would add.
 const origin = path.join(tmp, "origin");
@@ -53,11 +53,11 @@ const fs = require("fs"), a = process.argv.slice(2), stdin = fs.readFileSync(0, 
 const ls = (d) => { try { return fs.readdirSync(d).sort(); } catch { return null; } };
 fs.appendFileSync(${JSON.stringify(LOG)} + "/${who}.parts", JSON.stringify(/LARGE PR, PART (\\d) OF (\\d)/.exec(stdin)?.slice(1) ?? null) + "\\n");
 fs.writeFileSync(${JSON.stringify(LOG)} + "/${who}.json", JSON.stringify({ argv: a, cwd: process.cwd(), files: ls("."), cursor: ls(".cursor"),
-  stdinHasPrompt: stdin.includes("<pr>"),
+  stdinHasPrompt: stdin.includes("<pr>"), numbered: /\\n1\\. src\\/app\\.js:2: null\\?/.test(stdin), asksFixed: stdin.includes('"fixed": ['),
   rules: stdin.includes("<rules>\\nAlways check input validation.\\n</rules>"), rulesBeforePr: stdin.indexOf("<rules>") >= 0 && stdin.indexOf("<rules>") < stdin.lastIndexOf("<pr>"), env: process.env.OPENCODE_CONFIG_CONTENT ?? null }));
 `;
 script("codex", record("codex") + `const o = a[a.indexOf("-o") + 1]; const R = ${REVIEW}; if (process.env.EXTRA) R.comments.push({ path: "src/app.js", line: 1, body: "only codex" }, { path: "src/other.js", line: 3, body: "codex, untouched file" }); if (process.env.SECOND_VERDICT) R.verdict = process.env.SECOND_VERDICT; fs.writeFileSync(o, "banner...\\n" + JSON.stringify(R));`);
-script("claude", record("claude") + `console.log(${JSON.stringify(REVIEW)});`);
+script("claude", record("claude") + `const R = ${REVIEW}; if (process.env.FIXED) R.fixed = JSON.parse(process.env.FIXED); console.log(JSON.stringify(R));`);
 script("opencode", record("opencode") + `console.log("> build · model\\n" + ${JSON.stringify(REVIEW)});`);
 script("gemini", record("gemini") + `console.log("\`\`\`json\\n" + ${JSON.stringify(REVIEW)} + "\\n\`\`\`");`);
 script("cursor-agent", record("cursor") + `console.log(${JSON.stringify(REVIEW)});`);
@@ -290,4 +290,48 @@ test("secondOpinion in config.json must be off or an AI we know", () => {
     fs.writeFileSync(file, JSON.stringify({ secondOpinion: "codex" }));
     assert.equal(loadConfig().secondOpinion, "codex");
   } finally { if (was !== null) fs.writeFileSync(file, was); else fs.rmSync(file, { force: true }); }
+});
+
+const OLD = "a".repeat(40);
+const earlier = (over = {}) => markReviewed("o/r#1", { sha: OLD, status: "posted", lastReview: { verdict: "comment", summary: "before", comments: [
+  { path: "src/app.js", line: 2, body: "skipped, never posted", excluded: true },
+  { path: "src/app.js", line: 2, body: "null?" },
+  { path: "src/app.js", line: 1, body: "second one" } ] }, ...over });
+
+test("resolveFixed: the AI sees the earlier comments numbered (switched-off ones left out) and its 'fixed' numbers become the draft's list", async () => {
+  process.env.FIXED = "[1, 7, 1]";
+  try {
+    fresh(); earlier();
+    const r = await reviewPR(cfg({ ai: "claude", resolveFixed: true, finalWord: true }), "o/r", 1, { log: () => {} });
+    const s = seen("claude");
+    assert.ok(s.numbered && s.asksFixed, "numbered list and the 'fixed' field are in the prompt");
+    assert.deepEqual(r.draft.fixed, [{ path: "src/app.js", line: 2, body: "null?" }], "number 7 doesn't exist and 1 counted once");
+  } finally { delete process.env.FIXED; }
+});
+
+test("resolveFixed off (the default): nothing about fixing is asked for or kept", async () => {
+  process.env.FIXED = "[1]";
+  try {
+    fresh(); earlier();
+    const r = await reviewPR(cfg({ ai: "claude", finalWord: true }), "o/r", 1, { log: () => {} });
+    assert.equal(seen("claude").asksFixed, false);
+    assert.equal(r.draft.fixed, undefined);
+  } finally { delete process.env.FIXED; }
+});
+
+test("auto-posted review resolves the threads it says are fixed; the review record keeps only posted comments", async () => {
+  process.env.FIXED = "[2]";
+  try {
+    fresh(); earlier();
+    const r = await reviewPR(cfg({ ai: "claude", resolveFixed: true }), "o/r", 1, { log: () => {} });
+    assert.equal(r.status, "posted");
+    assert.deepEqual(r.draft.fixed, [{ path: "src/app.js", line: 1, body: "second one" }]);
+    assert.ok(getReviewed()["o/r#1"].lastReview.comments.every((c) => !c.excluded));
+  } finally { delete process.env.FIXED; }
+});
+
+test("combineOpinions: a thread is only marked fixed when both AIs say so", () => {
+  const m = combineOpinions({ verdict: "comment", summary: "s", comments: [], fixed: [1, 2] },
+    { verdict: "comment", summary: "t", comments: [], fixed: [2, 3] }, "Codex");
+  assert.deepEqual(m.fixed, [2]);
 });

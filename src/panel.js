@@ -288,6 +288,13 @@ function detailBody(d, W) {
       (c.excluded ? paint("  not posted", "gray") : ""));
     for (const l of wrap(c.body, W - 2, "       ")) lines.push(c.excluded ? paint(l, "gray") : md(l));
   });
+  if (d.fixed?.length) {
+    lines.push("");
+    lines.push(d.resolveOff
+      ? paint(` Earlier comments now fixed: ${d.fixed.length}, will NOT be marked resolved`, "gray") + paint("   press x to turn on", "gray")
+      : paint(` Earlier comments now fixed: ${d.fixed.length}, will be marked resolved on GitHub`, "bold") + paint("   press x to turn off", "gray"));
+    for (const f of d.fixed) lines.push(paint(`   ✓ ${f.path}${f.line ? `:${f.line}` : ""}  ${String(f.body).split("\n")[0].slice(0, Math.max(10, W - 20))}`, d.resolveOff ? "gray" : "green"));
+  }
   return lines;
 }
 
@@ -300,7 +307,7 @@ function renderDetail(W, H) {
     ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago${d.ai ? ` by ${d.ai.label}${d.ai.model && d.ai.model !== "default" ? ` (${d.ai.model})` : ""}${d.ai2 ? ` + ${d.ai2.label}` : ""}${d.seconds != null ? ` in ${formatDuration(d.seconds)}` : ""}` : ""}`, "gray")}   ${remoteNote(d)}`,
     rule(W),
   ];
-  const pairs = [["esc", "back"], ["p", "post"], ["a/r/c", "verdict"], ["1-9", "comment on/off"], ["e/E", "edit"],
+  const pairs = [["esc", "back"], ["p", "post"], ["a/r/c", "verdict"], ["1-9", "comment on/off"], ...(cur?.fixed?.length ? [["x", "resolve fixed"]] : []), ["e/E", "edit"],
     ["d", "discard"], ["o", "browser"], ["↑↓", "scroll"], ["?", "help"]];
   const foot = bottom(pairs, `Will post as ${VERDICT[d.verdict].words.toUpperCase()} with ${included(d).length} comment(s).`, W);
   const bodyH = H - head.length - foot.length;
@@ -735,7 +742,7 @@ function askPost(d) {
   const warn = r?.state && r.state !== "OPEN" ? paint(` The PR is ${r.state.toLowerCase()}.`, "yellow")
     : moved(d) ? paint(" The PR has new commits since this review.", "yellow") : "";
   confirm = {
-    label: `Post ${paint(VERDICT[d.verdict].words.toUpperCase(), "bold", VERDICT[d.verdict].color)} with ${included(d).length} comment(s) to ${paint(`${d.repo}#${d.number}`, "bold")}?${warn}`,
+    label: `Post ${paint(VERDICT[d.verdict].words.toUpperCase(), "bold", VERDICT[d.verdict].color)} with ${included(d).length} comment(s)${d.fixed?.length && !d.resolveOff ? ` and mark ${d.fixed.length} fixed thread(s) resolved` : ""} to ${paint(`${d.repo}#${d.number}`, "bold")}?${warn}`,
     onYes: () => {
       busy = `Posting to ${d.repo}#${d.number}…`;
       render();
@@ -745,7 +752,7 @@ function askPost(d) {
           deleteDraft(d.key);
           markReviewed(d.key, { sha: d.headSha, status: "posted", event, error: null,
             lastReview: { verdict: d.verdict, summary: d.summary, comments: included(d) } });
-          setFlash(`Posted to ${d.repo}#${d.number} as ${event}.`);
+          setFlash(`Posted to ${d.repo}#${d.number} as ${event}${d.resolvedCount ? `, ${d.resolvedCount} thread(s) resolved` : ""}.`);
           cur = null;
         } catch (e) {
           setFlash(String(e.message).split("\n")[0], "red", 8000);
@@ -851,6 +858,7 @@ function onKey(str, key = {}) {
       c.excluded = !c.excluded;
       saveDraft(d);
     }
+    else if (str === "x" && d.fixed?.length) { d.resolveOff = !d.resolveOff; saveDraft(d); }
     else if (str === "e") editSummary(d);
     else if (str === "E") editAll(d);
     else if (str === "p") askPost(d);

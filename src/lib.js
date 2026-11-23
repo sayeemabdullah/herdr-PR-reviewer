@@ -177,6 +177,7 @@ export const DEFAULTS = {
     "**/*.snap", "**/dist/**", "**/vendor/**",
   ],
   instructions: "",
+  resolveFixed: false, // on a re-review, mark the earlier comments the AI says are now fixed as resolved on GitHub (when you post)
   secondOpinion: "off", // "off", or another AI ("claude", "codex", ...) that reviews too; costs a second review
   splitLarge: true, // a PR whose diff is over maxDiffChars is reviewed in several passes, not cut off
   maxParts: 4, // at most this many passes (each one is a full AI run)
@@ -545,6 +546,9 @@ export function numberDiff(diff) {
   }).join("\n");
 }
 
+/** The comments of an earlier review that were actually posted (the ones switched off in the inbox never were). */
+export const postedComments = (review) => (review?.comments ?? []).filter((c) => !c.excluded);
+
 /** How much a comment matters, least to most. A comment without one counts as "important". */
 export const SEVERITIES = ["nit", "important", "blocker"];
 const rank = (c) => SEVERITIES.indexOf(c.severity ?? "important");
@@ -607,6 +611,37 @@ export function placeComments(comments, valid) {
   return { placed, folded };
 }
 
+const THREADS_QUERY = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){" +
+  "reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{body path author{login}}}}}}}}";
+
+/**
+ * Mark review threads as resolved on GitHub: the ones where YOUR earlier comment (same file, same text as posted) is the first
+ * comment and which are still open. Never throws; returns how many were resolved.
+ */
+export function resolveFixedThreads(draft, items) {
+  try {
+    const [owner, name] = draft.repo.split("/");
+    const r = run("gh", ["api", "graphql", "-f", `query=${THREADS_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${draft.number}`],
+      { allowFail: true, timeoutMs: 30000 });
+    if (!r.ok) return 0;
+    const me = currentUser().toLowerCase();
+    const open = (JSON.parse(r.stdout).data?.repository?.pullRequest?.reviewThreads?.nodes ?? [])
+      .filter((t) => !t.isResolved && t.comments?.nodes?.[0]?.author?.login?.toLowerCase() === me);
+    let done = 0;
+    for (const f of items) {
+      const i = open.findIndex((t) => t.comments.nodes[0].path === f.path && [f.body, labelled(f)].includes(t.comments.nodes[0].body));
+      if (i < 0) continue;
+      const [t] = open.splice(i, 1);
+      const m = run("gh", ["api", "graphql", "-f", "query=mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id}}}", "-f", `id=${t.id}`],
+        { allowFail: true, timeoutMs: 30000 });
+      if (m.ok) done++;
+    }
+    return done;
+  } catch {
+    return 0;
+  }
+}
+
 /** Posted text: nits and blockers say so, up front. An "important" comment needs no label. */
 export const labelled = (c) =>
   c.severity === "nit" ? `**nit:** ${c.body}` : c.severity === "blocker" ? `**blocker:** ${c.body}` : c.body;
@@ -644,6 +679,8 @@ export function postReview(draft, settings) {
     run("gh", endpoint, { input: JSON.stringify(payload) });
   }
   postFileComments(draft, fileComments);
+  // Earlier comments the AI says are now fixed. Only when the setting is on, and you didn't switch it off in the inbox.
+  draft.resolvedCount = draft.fixed?.length && !draft.resolveOff ? resolveFixedThreads(draft, draft.fixed) : 0;
   return event;
 }
 
@@ -708,7 +745,7 @@ export function mergeReviews(results, files) {
     return `**Part ${i + 1}** (${names})\n${r.review.summary}`;
   }).join("\n\n");
   return {
-    review: { verdict, summary, comments: results.flatMap((r) => r.review.comments) },
+    review: { verdict, summary, comments: results.flatMap((r) => r.review.comments), fixed: [...new Set(results.flatMap((r) => r.review.fixed ?? []))] },
     seconds: results.reduce((n, r) => n + (r.seconds ?? 0), 0),
   };
 }
@@ -736,7 +773,9 @@ export function combineOpinions(first, second, label) {
     : `says "${second.verdict}" (this review says "${first.verdict}")`;
   const summary = `${first.summary}\n\n_Second opinion, ${label}: ${verdictNote}. It made the same point as ${agreed} of ${first.comments.length} ` +
     `comment${first.comments.length === 1 ? "" : "s"} here${extra.length ? `, and found ${extra.length} more (turned off, see the inbox)` : ""}._`;
-  return { verdict: first.verdict, summary, comments: [...comments, ...extra] };
+  // Resolving a thread is done on GitHub, so both AIs have to say it is fixed.
+  const fixed = (first.fixed ?? []).filter((n) => (second.fixed ?? []).includes(n));
+  return { verdict: first.verdict, summary, comments: [...comments, ...extra], fixed };
 }
 
 // ---------- AI agent ----------
@@ -752,6 +791,8 @@ export function buildPrompt(pr, settings, ctx) {
   const truncated = diff.length > settings.maxDiffChars;
   const shown = numberDiff(cut(diff, settings.maxDiffChars));
   const prev = previous?.review;
+  const prevComments = postedComments(prev);
+  const askFixed = !!(settings.resolveFixed && prev && prevComments.length);
   // Files whose changes didn't fit in the shown diff (the last one shown may be partial too).
   const filesIn = (d) => [...d.matchAll(/^diff --git a\/.+? b\/(.+)$/gm)].map((m) => m[1]);
   const shownFiles = filesIn(shown);
@@ -796,8 +837,11 @@ FOLLOW-UP REVIEW: you reviewed this PR before, at commit ${previous.sha.slice(0,
 verdict: ${prev.verdict}
 summary: ${cut(prev.summary, 4000)}
 comments:
-${prev.comments?.length ? prev.comments.map((c) => `- ${c.path}:${c.line}: ${cut(c.body, 400)}`).join("\n") : "(none)"}
-
+${prevComments.length ? prevComments.map((c, i) => `${askFixed ? `${i + 1}. ` : "- "}${c.path}:${c.line}: ${cut(c.body, 400)}`).join("\n") : "(none)"}
+${askFixed ? `
+Also list in "fixed" the NUMBERS of the earlier comments above that the changes since then clearly fixed. Only list one
+you checked in the code; if you are unsure, leave it out. (Each one listed gets marked resolved on GitHub.)
+` : ""}
 Focus on what changed since then (shown below as "Changes since your last review"). Say which earlier
 points are now fixed and which still stand. Don't repeat an earlier inline comment unless it's still unfixed
 and important; never post the same comment twice.
@@ -824,7 +868,8 @@ ${commentable}
 Reply with ONLY a JSON object, nothing before or after it:
 {"verdict": "approve" | "request_changes" | "comment",
  "summary": "<markdown overview: what the PR does and your key findings, concise>",
- "comments": [{"path": "<file path as in diff>", "line": <a COMMENTABLE LINE number, or null for the whole file>, "start_line": <only for a multi-line suggestion: its first line>, "severity": "blocker" | "important" | "nit", "body": "<markdown>"}]}
+ "comments": [{"path": "<file path as in diff>", "line": <a COMMENTABLE LINE number, or null for the whole file>, "start_line": <only for a multi-line suggestion: its first line>, "severity": "blocker" | "important" | "nit", "body": "<markdown>"}]${askFixed ? `,
+ "fixed": [<numbers of the earlier comments that are now fixed>]` : ""}}
 Severity of each comment: "blocker" = a bug, security issue or defect that must be fixed before merge;
 "important" = should be fixed, but the PR could ship without it; "nit" = small and optional (naming, tiny cleanups).
 At most 15 inline comments; only things worth a reviewer's attention.
@@ -859,6 +904,7 @@ export function parseAgentOutput(text) {
     verdict: j.verdict,
     summary: String(j.summary ?? "").trim() || "(no summary)",
     comments: Array.isArray(j.comments) ? j.comments.filter((c) => c?.path && c?.body) : [],
+    fixed: Array.isArray(j.fixed) ? j.fixed.filter((n) => Number.isInteger(n) && n > 0) : [],
   };
 }
 
@@ -902,7 +948,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     }
 
     const tmp = fs.mkdtempSync(path.join(STATE_DIR, "run-"));
-    let review, seconds = null, ai2 = null;
+    let review, seconds = null, ai2 = null, prevPosted = [];
     try {
       // Follow-up review: what we said last time + what changed since.
       const prevState = getReviewed()[key];
@@ -915,6 +961,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
         }
         log(`  follow-up review since ${prevState.sha.slice(0, 7)}${previous.sinceDiff ? "" : " (old commit gone; full diff only)"}`);
       }
+      prevPosted = postedComments(previous?.review);
       const feedback = existingFeedback(repo, number, settings.footer);
       const rules = settings.repoRules ? repoReviewRules(repo, pr.baseRefName) : "";
       if (rules) log(`  following REVIEW.md from ${pr.baseRefName}`);
@@ -993,13 +1040,16 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       review.summary += "\n\n_(AI found no blocking issues; approval is left to a human.)_";
     }
 
+    const fixed = settings.resolveFixed
+      ? [...new Set(review.fixed ?? [])].map((n) => prevPosted[n - 1]).filter(Boolean).map(({ path, line, body }) => ({ path, line, body }))
+      : [];
     const draft = {
       key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid, ai, ...(ai2 ? { ai2 } : {}), seconds,
-      verdict: review.verdict, summary: review.summary, comments: ok, createdAt: new Date().toISOString(),
+      verdict: review.verdict, summary: review.summary, comments: ok, ...(fixed.length ? { fixed } : {}), createdAt: new Date().toISOString(),
     };
 
     if (dryRun) return { status: "dry-run", draft };
-    const lastReview = { verdict: draft.verdict, summary: draft.summary, comments: draft.comments };
+    const lastReview = { verdict: draft.verdict, summary: draft.summary, comments: draft.comments.filter((c) => !c.excluded) };
     if (settings.finalWord) {
       saveDraft(draft);
       markReviewed(key, { sha: pr.headRefOid, status: "drafted", attempts: 0, error: null, lastReview, ai, ...(ai2 ? { ai2 } : {}), seconds });

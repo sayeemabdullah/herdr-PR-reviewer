@@ -81,3 +81,9 @@ test("writeWorkFiles puts files in and takes exactly them out again", () => {
   writeWorkFiles(empty, { "p.md": "x" })();
   assert.ok(fs.existsSync(empty), "the folder the AI runs in is never removed");
 });
+
+test("parts: the earlier comments any part says are fixed are all kept, once", () => {
+  const m = mergeReviews([{ review: { verdict: "comment", summary: "a", comments: [], fixed: [1, 2] }, seconds: 1 },
+    { review: { verdict: "comment", summary: "b", comments: [], fixed: [2, 4] }, seconds: 1 }], [[], []]);
+  assert.deepEqual(m.review.fixed.sort(), [1, 2, 4]);
+});

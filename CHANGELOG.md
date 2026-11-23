@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Resolve fixed comments (opt-in).** With `"resolveFixed": true`, a re-review numbers its earlier comments and the AI names the ones the
+  new commits clearly fixed. The inbox lists them (press `x` to turn it off for that review) and posting also marks those threads
+  resolved on GitHub. Only your own open threads with the same file and text are touched. With a second opinion, both AIs must say it.
 - **Second opinion.** `"secondOpinion": "codex"` (any other AI, also per repo, also in the Settings tab) has a second AI review the
   same PR. Where both agree, the comment is marked "both AIs"; what only the second found comes in switched off. The first
   AI's verdict stands; a stricter one from the second is noted in the summary. Costs a second review.
