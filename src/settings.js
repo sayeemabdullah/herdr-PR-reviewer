@@ -18,6 +18,8 @@ export const FIELDS = [
   { section: "Reviews" },
   { key: "ai", type: "choice", label: "AI", optionsFor: (raw) => aiOptions(raw),
     help: "Which AI writes the reviews. auto = the first one installed. Switching resets the model." },
+  { key: "secondOpinion", type: "choice", label: "Second opinion", optionsFor: (raw) => ["off", ...detectAgents().map((a) => a.id)],
+    help: "A second AI reviews too. Where both agree is marked; what only it found is added switched off. Costs a second review." },
   { key: "finalWord", type: "bool", label: "Final word", on: "you approve first (inbox)", off: "AI posts by itself" },
   { key: "model", type: "choice", label: "Model", optionsFor: (raw) => modelOptions(raw), custom: true,
     help: "The AI's model. \"default\" is the AI's own choice. Press t to type any model name." },

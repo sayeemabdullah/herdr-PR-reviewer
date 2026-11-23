@@ -362,6 +362,7 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 | `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
 | `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
 | `instructions` | `""` | extra things the reviewer should check |
+| `secondOpinion` | `"off"` | another AI that reviews the same PR too: `"claude"`, `"codex"`, `"gemini"`, `"cursor"` or `"opencode"` (also per repo). See [Second opinion](#second-opinion) |
 | `splitLarge` | `true` | a PR whose diff is over `maxDiffChars` is reviewed in parts (whole files each) and merged into one review, instead of being cut off |
 | `maxParts` | `4` | most parts a big PR is split into; each part is a full AI run, so it costs that many reviews |
 | `minSeverity` | `"nit"` | hide comments below this level: `"nit"` shows all, `"important"` hides nits, `"blocker"` keeps only what must be fixed |
@@ -410,6 +411,15 @@ Want a different AI CLI? Put its command in `agent.command` / `agent.codeCommand
 </details>
 
 <a id="safety"></a>
+
+### Second opinion
+
+Set `"secondOpinion": "codex"` (or any other installed AI) and a second AI reviews the same PR after the first. The first AI's
+review stays *the* review. Comments the second AI also made (same file, within 2 lines) are marked **✓ both AIs** in the inbox,
+which is the signal to trust most. What only the second AI found is added **switched off**, tagged with its name, so you turn on the
+ones you agree with. If it says something stricter than the first (say, "request changes"), the summary notes it; your final
+verdict is still the first AI's. It costs a second review, and if it isn't installed or fails, the first review still goes ahead.
+If either AI is one that can't be fully locked down, the review always waits for you.
 
 ### Review rules in the repo
 

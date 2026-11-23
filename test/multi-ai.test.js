@@ -10,7 +10,7 @@ import test from "node:test";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-test-")));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
-const { loadConfig, repoReviewRules, reviewPR, listDrafts, deleteDraft, getReviewed } = await import("../src/lib.js");
+const { combineOpinions, loadConfig, repoReviewRules, reviewPR, listDrafts, deleteDraft, getReviewed } = await import("../src/lib.js");
 
 // "GitHub": a repo whose PR #1 head also carries files a malicious PR would add.
 const origin = path.join(tmp, "origin");
@@ -56,7 +56,7 @@ fs.writeFileSync(${JSON.stringify(LOG)} + "/${who}.json", JSON.stringify({ argv:
   stdinHasPrompt: stdin.includes("<pr>"),
   rules: stdin.includes("<rules>\\nAlways check input validation.\\n</rules>"), rulesBeforePr: stdin.indexOf("<rules>") >= 0 && stdin.indexOf("<rules>") < stdin.lastIndexOf("<pr>"), env: process.env.OPENCODE_CONFIG_CONTENT ?? null }));
 `;
-script("codex", record("codex") + `const o = a[a.indexOf("-o") + 1]; fs.writeFileSync(o, "banner...\\n" + ${JSON.stringify(REVIEW)});`);
+script("codex", record("codex") + `const o = a[a.indexOf("-o") + 1]; const R = ${REVIEW}; if (process.env.EXTRA) R.comments.push({ path: "src/app.js", line: 1, body: "only codex" }, { path: "src/other.js", line: 3, body: "codex, untouched file" }); if (process.env.SECOND_VERDICT) R.verdict = process.env.SECOND_VERDICT; fs.writeFileSync(o, "banner...\\n" + JSON.stringify(R));`);
 script("claude", record("claude") + `console.log(${JSON.stringify(REVIEW)});`);
 script("opencode", record("opencode") + `console.log("> build · model\\n" + ${JSON.stringify(REVIEW)});`);
 script("gemini", record("gemini") + `console.log("\`\`\`json\\n" + ${JSON.stringify(REVIEW)} + "\\n\`\`\`");`);
@@ -213,4 +213,81 @@ test("every part of a split review works for an AI that needs files in the check
     assert.equal(partsSeen("cursor").length, 3);
     assert.equal(r.status, "drafted");
   } finally { delete process.env.BIG_DIFF; }
+});
+
+test("second opinion: both AIs review, agreement is marked, the other's extra findings come in switched off", async () => {
+  process.env.EXTRA = "1";
+  process.env.SECOND_VERDICT = "request_changes";
+  try {
+    fresh();
+    const r = await reviewPR(cfg({ ai: "claude", secondOpinion: "codex" }), "o/r", 1, { log: () => {} });
+    assert.equal(r.status, "drafted", "Codex can't be locked down, so even Claude's review now waits for you");
+    assert.equal(r.draft.ai.id, "claude");
+    assert.equal(r.draft.ai2.id, "codex");
+    const [mine, extra] = r.draft.comments;
+    assert.equal(mine.agreed, true);
+    assert.equal(extra.excluded, true);
+    assert.equal(extra.second, "Codex");
+    assert.equal(r.draft.comments.length, 2, "a switched-off finding about an untouched file is dropped");
+    assert.doesNotMatch(r.draft.summary, /untouched file/);
+    assert.match(r.draft.summary, /Second opinion, Codex: says "request_changes" \(this review says "approve"\)/);
+    assert.equal(r.draft.verdict, "comment", "the first AI's verdict stands (an approval is downgraded as always)");
+    assert.equal(seen("claude").argv.includes("--restricted"), true);
+    assert.ok(seen("codex").stdinHasPrompt);
+  } finally { delete process.env.EXTRA; delete process.env.SECOND_VERDICT; }
+});
+
+test("second opinion: an AI that isn't installed, or is the same as the first, is skipped and the review still happens", async () => {
+  fresh();
+  const r = await reviewPR(cfg({ ai: "claude", secondOpinion: "opencode", finalWord: true }), "o/r", 1, { log: () => {} });
+  assert.equal(r.status, "drafted");
+  assert.equal(r.draft.ai2.id, "opencode");
+  fresh();
+  const same = await reviewPR(cfg({ ai: "claude", secondOpinion: "claude" }), "o/r", 1, { log: () => {} });
+  assert.equal(same.status, "posted", "asking claude to second claude does nothing, and doesn't lock the review down");
+  assert.equal(same.draft.ai2, undefined);
+  fresh();
+  fs.renameSync(path.join(bin, "gemini"), path.join(bin, "gemini.off"));
+  try {
+    const logs = [];
+    const missing = await reviewPR(cfg({ ai: "claude", secondOpinion: "gemini" }), "o/r", 1, { log: (l) => logs.push(l) });
+    assert.equal(missing.status, "posted", "no second AI ran, so Claude's own lockdown applies");
+    assert.equal(missing.draft.ai2, undefined);
+    assert.match(missing.draft.summary, /Second opinion skipped: Gemini CLI isn't installed/);
+    assert.ok(logs.some((l) => /second opinion skipped/.test(l)));
+  } finally { fs.renameSync(path.join(bin, "gemini.off"), path.join(bin, "gemini")); }
+});
+
+test("combineOpinions: matches by file and nearby line, keeps the first verdict, switches the rest off", () => {
+  const first = { verdict: "comment", summary: "S", comments: [
+    { path: "a.js", line: 10, body: "one" }, { path: "a.js", line: 40, body: "two" }, { path: "b.js", line: null, body: "file" } ] };
+  const second = { verdict: "comment", summary: "T", comments: [
+    { path: "a.js", line: 11, body: "same as one" }, { path: "a.js", line: 90, body: "new" },
+    { path: "b.js", line: null, body: "same as file" }, { path: "c.js", line: 1, body: "other file" } ] };
+  const m = combineOpinions(first, second, "Codex");
+  assert.deepEqual(m.comments.map((c) => [c.body, !!c.agreed, !!c.excluded]), [
+    ["one", true, false], ["two", false, false], ["file", true, false], ["new", false, true], ["other file", false, true] ]);
+  assert.equal(m.comments[3].second, "Codex");
+  assert.equal(m.verdict, "comment");
+  assert.match(m.summary, /also says "comment"\. It made the same point as 2 of 3 comments here, and found 2 more/);
+});
+
+test("combineOpinions: each of the second's comments agrees with at most one of the first's", () => {
+  const m = combineOpinions(
+    { verdict: "comment", summary: "S", comments: [{ path: "a.js", line: 5, body: "x" }, { path: "a.js", line: 6, body: "y" }] },
+    { verdict: "comment", summary: "T", comments: [{ path: "a.js", line: 5, body: "z" }] }, "Codex");
+  assert.deepEqual(m.comments.map((c) => !!c.agreed), [true, false]);
+});
+
+test("secondOpinion in config.json must be off or an AI we know", () => {
+  const file = path.join(tmp, "config.json");
+  const was = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+  try {
+    fs.writeFileSync(file, JSON.stringify({ secondOpinion: "gpt" }));
+    assert.throws(() => loadConfig(), /"secondOpinion" must be "off" or one of/);
+    fs.writeFileSync(file, JSON.stringify({ repos: [{ repo: "o/r", secondOpinion: "nope" }] }));
+    assert.throws(() => loadConfig(), /o\/r: "secondOpinion"/);
+    fs.writeFileSync(file, JSON.stringify({ secondOpinion: "codex" }));
+    assert.equal(loadConfig().secondOpinion, "codex");
+  } finally { if (was !== null) fs.writeFileSync(file, was); else fs.rmSync(file, { force: true }); }
 });

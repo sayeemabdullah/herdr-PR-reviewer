@@ -283,7 +283,8 @@ function detailBody(d, W) {
     const box = c.excluded ? paint("[ ]", "gray") : paint("[x]", "green", "bold");
     const loc = c.line ? `${c.path}:${c.start_line && c.start_line < c.line ? `${c.start_line}-` : ""}${c.line}` : `${c.path} (whole file)`;
     const tag = c.severity === "blocker" ? paint("  blocker", "red", "bold") : c.severity === "nit" ? paint("  nit", "gray") : "";
-    lines.push(` ${box} ${paint(String(i + 1), "bold")}  ${c.excluded ? paint(loc, "gray", "strike") : paint(loc, "cyan")}${tag}` +
+    const both = c.agreed ? paint("  ✓ both AIs", "green") : c.second ? paint(`  only ${c.second}`, "yellow") : "";
+    lines.push(` ${box} ${paint(String(i + 1), "bold")}  ${c.excluded ? paint(loc, "gray", "strike") : paint(loc, "cyan")}${tag}${both}` +
       (c.excluded ? paint("  not posted", "gray") : ""));
     for (const l of wrap(c.body, W - 2, "       ")) lines.push(c.excluded ? paint(l, "gray") : md(l));
   });
@@ -296,7 +297,7 @@ function renderDetail(W, H) {
   const head = [
     ...tabStrip(W),
     ` ${badge(d.verdict)}  ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(d.title, "bold")}`,
-    ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago${d.ai ? ` by ${d.ai.label}${d.ai.model && d.ai.model !== "default" ? ` (${d.ai.model})` : ""}${d.seconds != null ? ` in ${formatDuration(d.seconds)}` : ""}` : ""}`, "gray")}   ${remoteNote(d)}`,
+    ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago${d.ai ? ` by ${d.ai.label}${d.ai.model && d.ai.model !== "default" ? ` (${d.ai.model})` : ""}${d.ai2 ? ` + ${d.ai2.label}` : ""}${d.seconds != null ? ` in ${formatDuration(d.seconds)}` : ""}` : ""}`, "gray")}   ${remoteNote(d)}`,
     rule(W),
   ];
   const pairs = [["esc", "back"], ["p", "post"], ["a/r/c", "verdict"], ["1-9", "comment on/off"], ["e/E", "edit"],

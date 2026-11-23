@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Second opinion.** `"secondOpinion": "codex"` (any other AI, also per repo, also in the Settings tab) has a second AI review the
+  same PR. Where both agree, the comment is marked "both AIs"; what only the second found comes in switched off. The first
+  AI's verdict stands; a stricter one from the second is noted in the summary. Costs a second review.
 - **Big PRs are reviewed in parts.** A diff over `maxDiffChars` used to be cut off. Now it is split into passes of whole
   files (at most `maxParts`, default 4), each reviewed on its own and merged: strictest verdict, all comments, each
   part's summary. Off with `"splitLarge": false`. Each part is a full AI run, so a big PR costs that many reviews.

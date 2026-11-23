@@ -177,6 +177,7 @@ export const DEFAULTS = {
     "**/*.snap", "**/dist/**", "**/vendor/**",
   ],
   instructions: "",
+  secondOpinion: "off", // "off", or another AI ("claude", "codex", ...) that reviews too; costs a second review
   splitLarge: true, // a PR whose diff is over maxDiffChars is reviewed in several passes, not cut off
   maxParts: 4, // at most this many passes (each one is a full AI run)
   minSeverity: "nit", // hide comments below this: "nit" (show all), "important" or "blocker"
@@ -210,7 +211,10 @@ export function loadConfig() {
   if (cfg.minSeverity !== undefined && !SEVERITIES.includes(cfg.minSeverity)) {
     throw new Error(`"minSeverity" must be one of ${SEVERITIES.join(", ")}, not ${JSON.stringify(cfg.minSeverity)}`);
   }
+  const badSecond = (v) => v !== undefined && v !== "off" && !AI_IDS.includes(v);
+  if (badSecond(cfg.secondOpinion)) throw new Error(`"secondOpinion" must be "off" or one of ${AI_IDS.join(", ")}, not ${JSON.stringify(cfg.secondOpinion)}`);
   for (const r of cfg.repos) {
+    if (badSecond(r.secondOpinion)) throw new Error(`${r.repo}: "secondOpinion" must be "off" or one of ${AI_IDS.join(", ")}, not ${JSON.stringify(r.secondOpinion)}`);
     if (badAI(r.ai)) throw new Error(`${r.repo}: "ai" must be "auto" or one of ${AI_IDS.join(", ")}, not ${JSON.stringify(r.ai)}`);
     if (r.review !== undefined && r.review !== "all" && r.review !== "requested") {
       throw new Error(`${r.repo}: "review" must be "all" or "requested", not ${JSON.stringify(r.review)}`);
@@ -587,7 +591,10 @@ export function placeComments(comments, valid) {
     const body = String(c.body);
     const line = num(c.line), start = num(c.start_line);
     const lines = valid.get(c.path);
-    const sev = SEVERITIES.includes(c.severity) ? { severity: c.severity } : {};
+    const sev = {
+      ...(SEVERITIES.includes(c.severity) ? { severity: c.severity } : {}),
+      ...(c.agreed ? { agreed: true } : {}), ...(c.excluded ? { excluded: true } : {}), ...(c.second ? { second: String(c.second) } : {}),
+    };
     if (lines && line !== null && lines.has(line)) {
       // A range (start_line..line) only counts when every line in it can take a comment, i.e. it is inside one hunk.
       const range = start !== null && start < line && Array.from({ length: line - start + 1 }, (_, i) => start + i).every((n) => lines.has(n));
@@ -704,6 +711,32 @@ export function mergeReviews(results, files) {
     review: { verdict, summary, comments: results.flatMap((r) => r.review.comments) },
     seconds: results.reduce((n, r) => n + (r.seconds ?? 0), 0),
   };
+}
+
+// ---------- second opinion ----------
+
+const near = (a, b, gap = 2) => (a.line == null || b.line == null ? a.line == b.line : Math.abs(a.line - b.line) <= gap);
+
+/**
+ * Two AIs reviewed the same PR. The first one's review stays the review. Its comments the other AI also made (same
+ * file, within 2 lines) are marked `agreed`. The other AI's own findings are added switched off (`excluded`), tagged with
+ * its name, so you can turn on the ones you want in the inbox. A stricter verdict from the second is only noted.
+ */
+export function combineOpinions(first, second, label) {
+  const used = new Set();
+  const comments = first.comments.map((c) => {
+    const i = second.comments.findIndex((o, k) => !used.has(k) && o.path === c.path && near(c, o));
+    if (i < 0) return c;
+    used.add(i);
+    return { ...c, agreed: true };
+  });
+  const extra = second.comments.filter((_, k) => !used.has(k)).map((o) => ({ ...o, excluded: true, second: label }));
+  const agreed = used.size;
+  const verdictNote = second.verdict === first.verdict ? `also says "${second.verdict}"`
+    : `says "${second.verdict}" (this review says "${first.verdict}")`;
+  const summary = `${first.summary}\n\n_Second opinion, ${label}: ${verdictNote}. It made the same point as ${agreed} of ${first.comments.length} ` +
+    `comment${first.comments.length === 1 ? "" : "s"} here${extra.length ? `, and found ${extra.length} more (turned off, see the inbox)` : ""}._`;
+  return { verdict: first.verdict, summary, comments: [...comments, ...extra] };
 }
 
 // ---------- AI agent ----------
@@ -840,7 +873,13 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
   const base = settingsFor(cfg, repo);
   const { adapter, bin } = pickAgent(base); // throws a readable error if that AI isn't installed
   // An AI that can't be locked down as tightly as Claude never posts on its own and never approves.
-  const settings = adapter.lockdown === "partial" ? { ...base, finalWord: true, allowApprove: false } : base;
+  let second = null, secondError = null;
+  if (base.secondOpinion && base.secondOpinion !== "off" && base.secondOpinion !== adapter.id) {
+    try { second = pickAgent({ ...base, ai: base.secondOpinion, agentIsCustom: false }); } catch (e) { secondError = e.message; }
+  }
+  // If either AI can't be locked down as tightly as Claude, the review never posts on its own and never approves.
+  const partial = adapter.lockdown === "partial" || second?.adapter.lockdown === "partial";
+  const settings = partial ? { ...base, finalWord: true, allowApprove: false } : base;
   const ai = { id: adapter.id, label: adapter.label, model: modelShown(adapter, settings) };
   return withLock(key, async () => {
     const pr = { ...getPR(repo, number), repo };
@@ -863,7 +902,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     }
 
     const tmp = fs.mkdtempSync(path.join(STATE_DIR, "run-"));
-    let review, seconds = null;
+    let review, seconds = null, ai2 = null;
     try {
       // Follow-up review: what we said last time + what changed since.
       const prevState = getReviewed()[key];
@@ -902,21 +941,40 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       };
 
       // A diff over maxDiffChars is reviewed in parts (whole files each), instead of being cut off.
-      const pieces = settings.splitLarge && diff.length > settings.maxDiffChars
-        ? splitDiff(diff, settings.maxDiffChars, settings.maxParts) : [diff];
-      const results = [];
-      for (const [i, piece] of pieces.entries()) {
-        const files = diffFiles(piece);
-        if (pieces.length > 1) log(`  part ${i + 1} of ${pieces.length} (${files.length} files)`);
-        results.push(await runPass(adapter, bin, {
-          diff: piece,
-          part: pieces.length > 1 ? { n: i + 1, of: pieces.length, files } : null,
-          commentable: commentableRanges(pieces.length > 1 ? validFor(valid, files) : valid, { skip: skipped }),
-          previous: previous && pieces.length > 1 && previous.sinceDiff
-            ? { ...previous, sinceDiff: onlyFiles(previous.sinceDiff, files) } : previous,
-        }));
+      const reviewWith = async (ad, adBin) => {
+        const pieces = settings.splitLarge && diff.length > settings.maxDiffChars
+          ? splitDiff(diff, settings.maxDiffChars, settings.maxParts) : [diff];
+        const results = [];
+        for (const [i, piece] of pieces.entries()) {
+          const files = diffFiles(piece);
+          if (pieces.length > 1) log(`  part ${i + 1} of ${pieces.length} (${files.length} files)`);
+          results.push(await runPass(ad, adBin, {
+            diff: piece,
+            part: pieces.length > 1 ? { n: i + 1, of: pieces.length, files } : null,
+            commentable: commentableRanges(pieces.length > 1 ? validFor(valid, files) : valid, { skip: skipped }),
+            previous: previous && pieces.length > 1 && previous.sinceDiff
+              ? { ...previous, sinceDiff: onlyFiles(previous.sinceDiff, files) } : previous,
+          }));
+        }
+        return mergeReviews(results, pieces.map(diffFiles));
+      };
+
+      ({ review, seconds } = await reviewWith(adapter, bin));
+      if (secondError) {
+        log(`  second opinion skipped: ${secondError}`);
+        review.summary += `\n\n_(Second opinion skipped: ${secondError}.)_`;
+      } else if (second) {
+        try {
+          const other = await reviewWith(second.adapter, second.bin);
+          review = combineOpinions(review, other.review, second.adapter.label);
+          seconds += other.seconds;
+          ai2 = { id: second.adapter.id, label: second.adapter.label, model: modelShown(second.adapter, settings) };
+        } catch (e) {
+          const why = String(e.message).split("\n")[0];
+          log(`  second opinion (${second.adapter.label}) failed: ${why}`);
+          review.summary += `\n\n_(Second opinion from ${second.adapter.label} failed: ${why}.)_`;
+        }
       }
-      ({ review, seconds } = mergeReviews(results, pieces.map(diffFiles)));
     } finally {
       checkout?.cleanup();
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -927,7 +985,8 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     const { comments: shown, hidden } = filterBySeverity(review.comments, settings.minSeverity);
     if (hidden) log(`  ${hidden} comment${hidden === 1 ? "" : "s"} below "${settings.minSeverity}" left out`);
     const { placed: ok, folded: stray } = placeComments(shown, valid);
-    if (stray.length) review.summary += "\n\n" + foldComments(stray);
+    const toSummary = stray.filter((c) => !c.excluded);
+    if (toSummary.length) review.summary += "\n\n" + foldComments(toSummary);
 
     if (review.verdict === "approve" && !settings.allowApprove) {
       review.verdict = "comment";
@@ -935,7 +994,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     }
 
     const draft = {
-      key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid, ai, seconds,
+      key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid, ai, ...(ai2 ? { ai2 } : {}), seconds,
       verdict: review.verdict, summary: review.summary, comments: ok, createdAt: new Date().toISOString(),
     };
 
@@ -943,13 +1002,13 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     const lastReview = { verdict: draft.verdict, summary: draft.summary, comments: draft.comments };
     if (settings.finalWord) {
       saveDraft(draft);
-      markReviewed(key, { sha: pr.headRefOid, status: "drafted", attempts: 0, error: null, lastReview, ai, seconds });
+      markReviewed(key, { sha: pr.headRefOid, status: "drafted", attempts: 0, error: null, lastReview, ai, ...(ai2 ? { ai2 } : {}), seconds });
       notify("PR review needs your final word", `${repo}#${number}: ${draft.verdict} — open PR Panel (prefix+i or pr-panel)`, "request",
         { desktop: settings.desktopNotifications });
       return { status: "drafted", draft };
     }
     const event = postReview(draft, settings);
-    markReviewed(key, { sha: pr.headRefOid, status: "posted", event, attempts: 0, error: null, lastReview, ai, seconds });
+    markReviewed(key, { sha: pr.headRefOid, status: "posted", event, attempts: 0, error: null, lastReview, ai, ...(ai2 ? { ai2 } : {}), seconds });
     notify("AI review posted", `${repo}#${number}: ${event}`, "done", { desktop: settings.desktopNotifications });
     return { status: "posted", event, draft };
   });
