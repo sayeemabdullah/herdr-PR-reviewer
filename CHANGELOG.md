@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 - **Update tab.** PR Panel has a fifth tab, **Update** (`u`): the version you have, the newest release with its release notes, and
   `Enter` to install it. A `↑0.7.0` on the tab (and one notification per version) says a newer release exists. It checks about
