@@ -42,6 +42,7 @@ if [ ! -f "$ROOT/src/panel.js" ]; then
   exit 1
 fi
 export HERDR_PLUGIN_ID=${q(PLUGIN_ID)} HERDR_PLUGIN_CONFIG_DIR=${q(CONFIG_DIR)} HERDR_PLUGIN_STATE_DIR="$STATE"
+if [ "$1" = "doctor" ]; then shift; exec node "$ROOT/src/doctor.js" "$@"; fi
 exec node "$ROOT/src/panel.js" "$@"
 `;
     fs.writeFileSync(LAUNCHER, script);
@@ -106,7 +107,7 @@ export function runAsync(cmd, args, { input, timeoutMs, cwd, env } = {}) {
     p.on("error", (e) => { clearTimeout(timer); reject(e); });
     p.on("close", (code) => {
       clearTimeout(timer);
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} exited with ${code}: ${err.trim().slice(0, 500)}`));
+      code === 0 ? resolve(out) : reject(new Error(`${path.basename(cmd)} exited with ${code}: ${err.trim().slice(-500)}`));
     });
     p.stdin.on("error", () => {});
     p.stdin.end(input ?? "");
@@ -692,7 +693,7 @@ ${shown}
 </pr>`;
 }
 
-function parseAgentOutput(text) {
+export function parseAgentOutput(text) {
   const s = text.indexOf("{"), e = text.lastIndexOf("}");
   if (s < 0 || e < s) throw new Error("agent output had no JSON object:\n" + text.slice(0, 500));
   const j = JSON.parse(text.slice(s, e + 1));

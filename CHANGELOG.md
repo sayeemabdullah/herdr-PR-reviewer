@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **`pr-panel doctor`.** Runs a tiny review (a one-line PR with a planted bug) on your AI and says what to fix
+  if it fails: not installed, not signed in, timed out, or an answer the reviewer can't read. `--all` checks
+  every installed AI, `--ai codex` one. Also an action, `pr-reviewer.doctor`.
 - **Works with more than Claude.** Codex, Gemini CLI, Cursor and opencode can write the reviews. New `ai`
   setting (`auto` uses the first one installed; also per repo) and an **AI** row in the Settings tab,
   where the model list follows the AI you pick.

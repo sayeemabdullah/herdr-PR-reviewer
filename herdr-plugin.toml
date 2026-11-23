@@ -25,6 +25,11 @@ id = "inbox"
 title = "PR Reviewer: open PR Panel (old shortcut name)"
 command = ["node", "src/open-pane.js", "panel"]
 
+[[actions]]
+id = "doctor"
+title = "PR Reviewer: check that my AI works"
+command = ["node", "src/open-pane.js", "doctor"]
+
 # Adds a `pr-panel` command (~/.local/bin) that opens the panel in any terminal, and survives updates.
 [[actions]]
 id = "install-cli"
@@ -44,3 +49,10 @@ id = "panel"
 title = "PR Panel"
 placement = "overlay"
 command = ["node", "src/panel.js"]
+
+# Runs a tiny review on your AI and says what to fix if it fails.
+[[panes]]
+id = "doctor"
+title = "PR Reviewer check"
+placement = "overlay"
+command = ["node", "src/doctor.js", "--wait"]
