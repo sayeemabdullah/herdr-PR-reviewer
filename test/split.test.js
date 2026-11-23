@@ -68,3 +68,9 @@ test("the prompt of a part says which part it is and to stay within its files", 
   assert.match(p, /ONLY the 2 files/);
   assert.doesNotMatch(buildPrompt(pr, loadConfig(), { diff: DIFF }), /LARGE PR/);
 });
+
+test("parts: the earlier comments any part says are fixed are all kept, once", () => {
+  const m = mergeReviews([{ review: { verdict: "comment", summary: "a", comments: [], fixed: [1, 2] }, seconds: 1 },
+    { review: { verdict: "comment", summary: "b", comments: [], fixed: [2, 4] }, seconds: 1 }], [[], []]);
+  assert.deepEqual(m.review.fixed.sort(), [1, 2, 4]);
+});
