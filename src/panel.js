@@ -275,7 +275,7 @@ function detailBody(d, W) {
   d.comments.forEach((c, i) => {
     lines.push("");
     const box = c.excluded ? paint("[ ]", "gray") : paint("[x]", "green", "bold");
-    const loc = c.line ? `${c.path}:${c.line}` : `${c.path} (whole file)`;
+    const loc = c.line ? `${c.path}:${c.start_line && c.start_line < c.line ? `${c.start_line}-` : ""}${c.line}` : `${c.path} (whole file)`;
     lines.push(` ${box} ${paint(String(i + 1), "bold")}  ${c.excluded ? paint(loc, "gray", "strike") : paint(loc, "cyan")}` +
       (c.excluded ? paint("  not posted", "gray") : ""));
     for (const l of wrap(c.body, W - 2, "       ")) lines.push(c.excluded ? paint(l, "gray") : md(l));

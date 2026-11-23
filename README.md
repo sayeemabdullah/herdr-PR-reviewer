@@ -129,7 +129,7 @@ For each PR, Claude gets:
 - **what other reviewers already said**, so it doesn't repeat them
 - on a re-review, **its previous review and the changes since**
 
-It replies with a verdict (**approve**, **request changes** or **comment**), a summary, and comments on specific lines. Small, certain fixes come as GitHub **suggestions**. Up to 2 PRs are reviewed at once.
+It replies with a verdict (**approve**, **request changes** or **comment**), a summary, and comments on specific lines. Small, certain fixes come as GitHub **suggestions** (one line or several), so the author can apply them with one click. Up to 2 PRs are reviewed at once.
 
 <details>
 <summary><b>The details</b></summary>
