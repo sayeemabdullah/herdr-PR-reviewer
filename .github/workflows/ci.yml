@@ -24,6 +24,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         node: [22, 24]
+        # macOS runners are scarce and a job can wait in the queue for a long time (timeout-minutes doesn't
+        # count queue time). macOS is checked on the oldest supported Node; Node 24 is checked on Linux.
+        exclude:
+          - { os: macos-latest, node: 24 }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
