@@ -343,6 +343,11 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 |---|---|---|
 | `model` | `"opus"` | the Claude model for reviews, e.g. `"opus"`, `"sonnet"`, or `""` for Claude's default |
 | `effort` | `"high"` | how hard it thinks: `low`, `medium`, `high`, `xhigh`, `max`. Higher is slower and costs more |
+| `smartModel` | `false` | use a cheaper model for small or docs-only PRs, and your `model` / `effort` for the rest. See [Smarter model choice](#smarter-model-choice) |
+| `cheapModel`, `cheapEffort` | `"sonnet"`, `"medium"` | what small and docs-only PRs use when `smartModel` is on |
+| `smallMaxLines`, `smallMaxFiles` | `60`, `3` | a PR is "small" at or under both: added + removed lines, and changed files |
+| `docsPaths` | `*.md`, `docs/**`, … | a PR whose files are all these counts as docs-only |
+| `riskyPaths` | `auth`, `migrations`, `*.sql`, workflows, `package.json`, … | a PR touching any of these always gets your model and effort |
 | `readCode` | `true` | let the AI read the whole repo at the PR's commit (read-only). `false`: diff only |
 | `ignorePaths` | lockfiles, `*.min.js`, `dist/`, `vendor/`, `*.snap` | left out of the diff, as globs like `"**/*.generated.ts"`. Setting this replaces the defaults |
 | `instructions` | `""` | extra things the reviewer should check |
@@ -374,6 +379,14 @@ Any AI CLI works: it gets the prompt on stdin and must print a JSON review on st
 </details>
 
 <a id="safety"></a>
+
+### Smarter model choice
+
+Set `"smartModel": true` and a docs-only or small PR (at most 3 files and 60 changed lines) is reviewed by a cheaper
+model (Sonnet at medium effort), which is faster and uses less of your plan. Everything else, and **any PR that touches a risky
+path** (auth, security, crypto, payments, migrations, SQL, CI workflows, Dockerfiles, `package.json`, secrets), uses your
+`model` and `effort` as usual, so a one-line change to a login file still gets Opus. The inbox header says which model
+reviewed the PR and why. Change the cheap model, the limits or the path lists in `config.json`. It is off by default.
 
 ### Review rules in the repo
 

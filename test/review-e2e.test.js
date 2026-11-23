@@ -35,8 +35,8 @@ script("gh", `
 const fs = require("fs"), cp = require("child_process"), a = process.argv.slice(2), has = (s) => a.join(" ").includes(s);
 if (has("api user")) console.log("me");
 else if (a[0] === "pr" && a[1] === "view") console.log(JSON.stringify({ number: 1, title: "Add thing", body: "", url: "u", author: { login: "stranger" },
-  baseRefName: "main", headRefName: "x", headRefOid: ${JSON.stringify(sha)}, isDraft: false, additions: 1, deletions: 1, changedFiles: 1 }));
-else if (a[0] === "pr" && a[1] === "diff") process.stdout.write(process.env.BIG_DIFF ? ["a", "b", "c"].map((f) => "diff --git a/" + f + ".js b/" + f + ".js\\n--- /dev/null\\n+++ b/" + f + ".js\\n@@ -0,0 +1,2 @@\\n+" + "x".repeat(100) + "\\n+y\\n").join("") : ${JSON.stringify(DIFF)});
+  baseRefName: "main", headRefName: "x", headRefOid: ${JSON.stringify(sha)}, isDraft: false, additions: Number(process.env.ADDS || 1), deletions: 1, changedFiles: 1 }));
+else if (a[0] === "pr" && a[1] === "diff") process.stdout.write(process.env.RISKY ? ${JSON.stringify(DIFF)}.split("src/app.js").join("src/auth/login.js") : process.env.DOCS ? ${JSON.stringify(DIFF)}.split("src/app.js").join("docs/guide.md") : process.env.BIG_DIFF ? ["a", "b", "c"].map((f) => "diff --git a/" + f + ".js b/" + f + ".js\\n--- /dev/null\\n+++ b/" + f + ".js\\n@@ -0,0 +1,2 @@\\n+" + "x".repeat(100) + "\\n+y\\n").join("") : ${JSON.stringify(DIFF)});
 else if (a[0] === "repo" && a[1] === "clone") cp.execFileSync("git", ["clone", "-q", "--no-checkout", ${JSON.stringify(origin)}, a[3]]);
 else if (has("/contents/")) { if (has("REVIEW.md?ref=main") && !has(".github/") && process.env.RULES_ON) process.stdout.write("Always check input validation.\\n"); else process.exit(1); }
 else if (has("--method POST")) { fs.writeFileSync(${JSON.stringify(LOG)} + "/posted.json", fs.readFileSync(0, "utf8")); console.log("{}"); }
@@ -177,4 +177,52 @@ test("an auto-posted review resolves what it says is fixed; the review record ke
     assert.deepEqual(r.draft.fixed, [{ path: "src/app.js", line: 1, body: "second one" }]);
     assert.ok(getReviewed()["o/r#1"].lastReview.comments.every((c) => !c.excluded));
   } finally { delete process.env.FIXED; }
+});
+
+const modelUsed = () => { const a = seen().argv; return [a[a.indexOf("--model") + 1], a[a.indexOf("--effort") + 1]]; };
+
+test("smartModel off (the default): every review uses your model and effort", async () => {
+  fresh();
+  await reviewPR(cfg(), "o/r", 1, { log: () => {} });
+  assert.deepEqual(modelUsed(), ["opus", "high"]);
+});
+
+test("smartModel on: a small PR gets the cheap model, and the draft says why", async () => {
+  fresh();
+  const r = await reviewPR(cfg({ smartModel: true, finalWord: true }), "o/r", 1, { log: () => {} });
+  assert.deepEqual(modelUsed(), ["sonnet", "medium"]);
+  assert.equal(r.draft.model, "sonnet");
+  assert.match(r.draft.modelWhy, /^small: 1 file, 2 lines$/);
+});
+
+test("smartModel on: a docs-only PR gets the cheap model even when it is big", async () => {
+  process.env.DOCS = "1"; process.env.ADDS = "900";
+  try {
+    fresh();
+    const r = await reviewPR(cfg({ smartModel: true, finalWord: true }), "o/r", 1, { log: () => {} });
+    assert.deepEqual(modelUsed(), ["sonnet", "medium"]);
+    assert.equal(r.draft.modelWhy, "docs only");
+  } finally { delete process.env.DOCS; delete process.env.ADDS; }
+});
+
+test("smartModel on: a risky path gets your model and effort, however small", async () => {
+  process.env.RISKY = "1";
+  try {
+    fresh();
+    const r = await reviewPR(cfg({ smartModel: true, finalWord: true }), "o/r", 1, { log: () => {} });
+    assert.deepEqual(modelUsed(), ["opus", "high"]);
+    assert.equal(r.draft.modelWhy, "touches src/auth/login.js");
+  } finally { delete process.env.RISKY; }
+});
+
+test("smartModel on: a big PR gets your model and effort; the cheap model is yours to choose", async () => {
+  process.env.ADDS = "500";
+  try {
+    fresh();
+    await reviewPR(cfg({ smartModel: true }), "o/r", 1, { log: () => {} });
+    assert.deepEqual(modelUsed(), ["opus", "high"]);
+    fresh();
+    await reviewPR(cfg({ smartModel: true, smallMaxLines: 1000, cheapModel: "haiku", cheapEffort: "low" }), "o/r", 1, { log: () => {} });
+    assert.deepEqual(modelUsed(), ["haiku", "low"]);
+  } finally { delete process.env.ADDS; }
 });

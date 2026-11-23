@@ -297,7 +297,7 @@ function renderDetail(W, H) {
   const head = [
     ...tabStrip(W),
     ` ${badge(d.verdict)}  ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(d.title, "bold")}`,
-    ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago${d.seconds != null ? ` in ${formatDuration(d.seconds)}` : ""}`, "gray")}   ${remoteNote(d)}`,
+    ` ${paint(`by ${d.author} · ${d.headSha.slice(0, 7)} · reviewed ${age(d.createdAt)} ago${d.model ? ` with ${d.model} (${d.modelWhy})` : ""}${d.seconds != null ? ` in ${formatDuration(d.seconds)}` : ""}`, "gray")}   ${remoteNote(d)}`,
     rule(W),
   ];
   const pairs = [["esc", "back"], ["p", "post"], ["a/r/c", "verdict"], ["1-9", "comment on/off"], ...(cur?.fixed?.length ? [["x", "resolve fixed"]] : []), ["e/E", "edit"],
