@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - **`pr-panel doctor`.** Runs a tiny review (a one-line PR with a planted bug) on Claude Code and says what to fix if it
   fails: not installed, not signed in, timed out, or an answer the reviewer can't read. Also an action, `pr-reviewer.doctor`.
