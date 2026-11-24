@@ -2,6 +2,7 @@
 //
 //   node src/update.js              check GitHub now and say whether there is a newer release
 //   node src/update.js --install    install the newest release (same as the Update tab)
+//   node src/update.js --refresh    look quietly and remember the answer (PR Panel uses this, so it never freezes)
 //
 // Only ever installs a published release tag (vX.Y.Z) that is NEWER than what you have, from this repo, with herdr's own
 // `plugin install`. Never master, never a downgrade, never a plugin you linked from a local folder.
@@ -117,7 +118,12 @@ export function checkForUpdate({ force = false, maxAgeMs = CHECK_EVERY_MS, root 
  */
 export function installSource() {
   const r = run(HERDR, ["plugin", "list"], { allowFail: true, timeoutMs: 15000 });
-  const line = r.ok ? r.stdout.split("\n").find((l) => l.startsWith(`- ${PLUGIN_ID} `)) : null;
+  return parseInstallSource(r.ok ? r.stdout : "");
+}
+
+/** The same, from the text of `herdr plugin list` (so the panel can ask herdr without freezing). */
+export function parseInstallSource(listing) {
+  const line = String(listing ?? "").split("\n").find((l) => l.startsWith(`- ${PLUGIN_ID} `));
   const src = line ? /\[([^\]]+)\]\s*$/.exec(line.trim())?.[1] : null;
   const g = /^github:([^@]+)@(.+)$/.exec(src ?? "");
   if (g) return { kind: "github", repo: g[1], ref: g[2], source: src, canUpdate: g[1].toLowerCase() === UPDATE_REPO.toLowerCase() };
@@ -235,6 +241,7 @@ export function autoUpdateStep(cfg, { check = checkForUpdate, apply = applyUpdat
 
 async function main() {
   const args = process.argv.slice(2);
+  if (args.includes("--refresh")) { checkForUpdate({ force: args.includes("--force") }); return; } // for PR Panel: look, remember, say nothing
   const st = checkForUpdate({ force: true });
   const now = installedVersion();
   console.log(`PR Reviewer ${now}`);

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: keys sometimes did nothing in PR Panel.** Opening the Update tab asked GitHub and herdr in a way that froze the whole panel until they
+  answered, so <kbd>q</kbd>, <kbd>r</kbd>, <kbd>s</kbd>, <kbd>n</kbd> and <kbd>?</kbd> seemed dead. The panel now asks in the background and keeps working
+  (the tab says "looking at GitHub…"). While a post or an install is running, <kbd>q</kbd> still quits.
+- **Fixed: inside a review, <kbd>n</kbd>, <kbd>s</kbd>, <kbd>h</kbd>, <kbd>u</kbd> and <kbd>?</kbd> did nothing.** They work there now. (<kbd>r</kbd> still sets the verdict to
+  request changes, as shown at the bottom.) Also, the key you press to close the help screen is no longer swallowed.
+
 ## 0.8.0
 
 - **Reviews link back to the project.** The note at the bottom of a posted review now reads "AI-assisted review via
