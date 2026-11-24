@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.1
 
 - **Fixed: keys sometimes did nothing in PR Panel.** Opening the Update tab asked GitHub and herdr in a way that froze the whole panel until they
   answered, so <kbd>q</kbd>, <kbd>r</kbd>, <kbd>s</kbd>, <kbd>n</kbd> and <kbd>?</kbd> seemed dead. The panel now asks in the background and keeps working
