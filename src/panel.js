@@ -10,10 +10,10 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import {
-  CONFIG_FILE, ROOT, deleteDraft, formatDuration, getReviewed, listActiveDetails, listActiveReviews, listDrafts, loadConfig, markReviewed,
+  CONFIG_FILE, HERDR, ROOT, deleteDraft, formatDuration, getReviewed, listActiveDetails, listActiveReviews, listDrafts, loadConfig, markReviewed,
   parsePRUrl, postReview, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
-import { applyUpdate, cannotUpdateReason, checkForUpdate, installSource, installedVersion, readUpdateState } from "./update.js";
+import { cannotUpdateReason, installedVersion, parseInstallSource, readUpdateState } from "./update.js";
 import {
   FIELDS, MODELS, addRepo, cycle, effective, listText, parseList, parseNumber, parseRepo, readRaw, removeRepo, repoList,
   setRepoValue, setValue, writeRaw,
@@ -111,6 +111,7 @@ if (!process.stdin.isTTY || !process.stdout.isTTY) {
 const out = process.stdout;
 const TABS = ["inbox", "repos", "settings", "history", "update"];
 const RUNNING_VERSION = installedVersion(); // what this panel loaded; after an update the folder says something newer
+let updChecking = false; // a look at GitHub is running (in a child process)
 let updSrc = null; // how the plugin was installed, looked up when the Update tab opens
 let tab = "inbox";
 let drafts = [];
@@ -633,11 +634,17 @@ function renderHistory(W, H) {
 
 // ---------- Update ----------
 
+/**
+ * Anything that talks to GitHub or herdr runs in a child process, so the panel keeps answering keys while it works
+ * (a blocking call here froze every key for as long as GitHub took).
+ */
+const UPDATE_JS = path.join(ROOT, "src", "update.js");
+
 /** Opening the tab: find out how the plugin was installed, and look for a release if the last look is old. */
 function openUpdateTab() {
   updSrc = null;
-  setImmediate(() => {
-    try { updSrc = installSource(); } catch { updSrc = { kind: "unknown", canUpdate: false }; }
+  execFile(HERDR, ["plugin", "list"], { timeout: 15000 }, (err, stdout) => {
+    updSrc = err ? { kind: "unknown", canUpdate: false } : parseInstallSource(stdout);
     const { raw } = readRawSafe();
     const st = readUpdateState();
     if ((!raw || effective(raw, "checkForUpdates")) && (!st.checkedAt || Date.now() - st.checkedAt > 3600 * 1000)) checkUpdateNow(false);
@@ -646,11 +653,12 @@ function openUpdateTab() {
 }
 
 function checkUpdateNow(force = true) {
-  busy = "Checking GitHub for a newer release…";
+  if (updChecking) return;
+  updChecking = true; // shown in the tab; keys keep working while GitHub answers
   render();
-  setImmediate(() => {
-    const st = checkForUpdate({ force, maxAgeMs: 3600 * 1000 }); // opening the tab: a look from the last hour is fresh enough
-    busy = null;
+  execFile(process.execPath, [UPDATE_JS, "--refresh", ...(force ? ["--force"] : [])], { timeout: 45000 }, () => {
+    const st = readUpdateState();
+    updChecking = false;
     if (force) setFlash(st.error ? `Couldn't check: ${st.error}` : st.releases?.[0] ? `${st.releases[0].version} is available.` : "You're up to date.", st.error ? "red" : "green");
     render();
   });
@@ -662,15 +670,13 @@ function askUpdate(next) {
     onYes: () => {
       busy = `Installing ${next.version}…`;
       render();
-      setImmediate(() => {
-        try {
-          const r = applyUpdate(next.tag);
-          try { updSrc = installSource(); } catch {}
-          setFlash(`Updated ${r.from} → ${r.to}. Press q and reopen PR Panel to use it.`, "green", 20000);
-        } catch (e) {
-          setFlash(String(e.message).split("\n")[0], "red", 10000);
-        }
+      execFile(process.execPath, [UPDATE_JS, "--install"], { timeout: 240000 }, (err, stdout, stderr) => {
         busy = null;
+        if (err) setFlash(String(stderr || stdout || err.message).split("\n").map((l) => l.trim()).filter(Boolean).pop()?.replace(/^✗\s*/, "") ?? "The update failed.", "red", 10000);
+        else {
+          execFile(HERDR, ["plugin", "list"], { timeout: 15000 }, (e2, out2) => { if (!e2) updSrc = parseInstallSource(out2); render(); });
+          setFlash(`Updated to ${next.version}. Press q and reopen PR Panel to use it.`, "green", 20000);
+        }
         render();
       });
     },
@@ -693,7 +699,7 @@ function renderUpdate(W, H) {
   body.push(row("Latest release", next ? paint(next.version, "green", "bold") + paint("   a newer version is available", "green")
     : st.error && !st.checkedAt ? paint("couldn't check", "red")
     : st.checkedAt ? paint("you're up to date", "green") : paint("not checked yet", "gray")));
-  body.push(row("Checked", st.checkedAt ? ago(st.checkedAt) + (st.error ? paint(`   last try failed: ${st.error}`, "red") : "") : paint(st.error ? st.error : "never", st.error ? "red" : "gray")));
+  body.push(row("Checked", updChecking ? paint("looking at GitHub…", "cyan", "bold") : st.checkedAt ? ago(st.checkedAt) + (st.error ? paint(`   last try failed: ${st.error}`, "red") : "") : paint(st.error ? st.error : "never", st.error ? "red" : "gray")));
   body.push(row("Installed from", !updSrc ? paint("…", "gray") : updSrc.kind === "github" ? `GitHub, ${updSrc.ref}` : updSrc.kind === "other" ? "a local folder" : paint("unknown", "yellow")));
   body.push(row("Check for updates", checks ? paint("on ", "green", "bold") + paint("about every 6 hours", "gray") : paint("off", "yellow", "bold") + paint(" turn on in Settings", "gray")));
   body.push(row("Update automatically", auto ? paint("on ", "green", "bold") + paint("the watcher installs new releases when no review is running", "gray") : paint("off", "yellow", "bold") + paint("  press a to turn on", "gray")));
@@ -945,7 +951,7 @@ function goTab(t) {
 
 function onKey(str, key = {}) {
   if (key.ctrl && key.name === "c") return quit();
-  if (busy) return;
+  if (busy) { if (key.name === "q" || str === "q") quit(); return; } // a post or an install is running: only quitting works
 
   if (input) {
     if (key.name === "return") { const { onSubmit, value } = input; input = null; onSubmit(value); }
@@ -967,7 +973,7 @@ function onKey(str, key = {}) {
     if (opt || key.name === "escape") { choice = null; opt?.[2](); }
     return render();
   }
-  if (help) { help = false; return render(); }
+  if (help) { help = false; if (str === "?" || key.name === "escape") return render(); } // any other key closes help and still does its job
 
   const k = key.name ?? str;
   // Tabs work everywhere except while typing in the repo picker.
@@ -1001,6 +1007,11 @@ function onKey(str, key = {}) {
     else if (str === "d") askDiscard(d);
     else if (str === "o") openUrl(d.url);
     else if (str === "q") quit();
+    else if (str === "?") help = true;
+    else if (str === "n") askNewReview();
+    else if (str === "s") goTab("settings");
+    else if (str === "h") goTab("history");
+    else if (str === "u") goTab("update");
     return render();
   }
 

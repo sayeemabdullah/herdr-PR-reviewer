@@ -313,6 +313,23 @@ test("command line: says when you're up to date, when something newer exists, an
   assert.match(offline.stderr, /couldn't check for updates: HTTP 502/);
 });
 
+test("the install source can be read from herdr's own text, so the panel can ask without freezing", () => {
+  const g = U.parseInstallSource("1 plugin installed:\n- pr-reviewer (PR Reviewer) enabled [github:sayeemabdullah/herdr-PR-reviewer@v0.8.0]\n  config: /x");
+  assert.equal(g.canUpdate, true);
+  assert.equal(g.ref, "v0.8.0");
+  assert.equal(U.parseInstallSource("- pr-reviewer (PR Reviewer) enabled [/Users/me/linked]").kind, "other");
+  assert.equal(U.parseInstallSource("").kind, "unknown");
+});
+
+test("command line --refresh looks, remembers the answer and prints nothing", () => {
+  reset();
+  process.env.RELEASES = JSON.stringify([rel("v0.6.0")]);
+  const r = spawnSync(process.execPath, [new URL("../src/update.js", import.meta.url).pathname, "--refresh", "--force"], { encoding: "utf8", env: { ...process.env, HERDR_PLUGIN_ROOT: FAKE_ROOT } });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, "");
+  assert.ok(U.readUpdateState().checkedAt, "the answer is remembered for PR Panel to read");
+});
+
 test("the pr-panel launcher and the bin script both route `update` to update.js", () => {
   const binScript = fs.readFileSync(new URL("../bin/pr-panel", import.meta.url), "utf8");
   assert.match(binScript, /"\$1" = "update".*src\/update\.js/);
