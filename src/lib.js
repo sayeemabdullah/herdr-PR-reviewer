@@ -7,6 +7,10 @@ import path from "node:path";
 export const PLUGIN_ID = process.env.HERDR_PLUGIN_ID ?? "pr-reviewer";
 export const HERDR = process.env.HERDR_BIN_PATH ?? "herdr";
 export const ROOT = process.env.HERDR_PLUGIN_ROOT ?? path.resolve(import.meta.dirname, "..");
+export const PROJECT_URL = "https://github.com/sayeemabdullah/herdr-PR-reviewer";
+// The footer reviews were posted with before it linked to the project; still stripped when reading what others said.
+const OLD_FOOTER = "---\n<sub>🤖 AI-assisted review via herdr pr-reviewer</sub>";
+
 export const CONFIG_DIR =
   process.env.HERDR_PLUGIN_CONFIG_DIR ?? path.join(os.homedir(), ".config", "herdr-pr-reviewer");
 export const STATE_DIR = process.env.HERDR_PLUGIN_STATE_DIR ?? path.join(CONFIG_DIR, "state");
@@ -190,7 +194,7 @@ export const DEFAULTS = {
   maxParts: 4, // at most this many passes (each one is a full AI run)
   minSeverity: "nit", // hide comments below this: "nit" (show all), "important" or "blocker"
   repoRules: true, // also follow the repo's own REVIEW.md (read from the PR's base branch, never from the PR)
-  footer: "\n\n---\n<sub>🤖 AI-assisted review via herdr pr-reviewer</sub>",
+  footer: `\n\n---\n<sub>🤖 AI-assisted review via [herdr pr-reviewer](${PROJECT_URL})</sub>`,
   autoStartWatcher: true,
   checkForUpdates: true, // look for a newer release of this plugin about every 6 hours (one GitHub request)
   autoUpdate: false, // install a newer release by itself (the watcher does it, when no review is running)
@@ -287,11 +291,18 @@ export function listDrafts() {
 
 /** Keys of PRs being reviewed at this moment (by the watcher or a manual review). */
 export function listActiveReviews() {
+  return listActiveDetails().map((a) => a.key);
+}
+
+/** Reviews running now: { key, source: "link" | "auto" | null, since } (since = ms timestamp when it started). */
+export function listActiveDetails() {
   return fs.readdirSync(LOCKS_DIR).flatMap((f) => {
     try {
       const p = path.join(LOCKS_DIR, f);
-      if (Date.now() - fs.statSync(p).mtimeMs > 60 * 60 * 1000) return []; // stale
-      return [fs.readFileSync(p, "utf8").trim() || f.replace(/\.json$/, "")];
+      const st = fs.statSync(p);
+      if (Date.now() - st.mtimeMs > 60 * 60 * 1000) return []; // stale
+      const [key, source] = fs.readFileSync(p, "utf8").trim().split("\t");
+      return [{ key: key || f.replace(/\.json$/, ""), source: source || null, since: st.mtimeMs }];
     } catch {
       return [];
     }
@@ -307,7 +318,7 @@ export function watcherRunning() {
   }
 }
 
-async function withLock(key, fn) {
+async function withLock(key, fn, source = "") {
   const f = path.join(LOCKS_DIR, keyFile(key));
   try {
     if (Date.now() - fs.statSync(f).mtimeMs > 60 * 60 * 1000) fs.rmSync(f); // stale
@@ -315,7 +326,7 @@ async function withLock(key, fn) {
   let fd;
   try {
     fd = fs.openSync(f, "wx");
-    fs.writeSync(fd, key); // so the inbox can show what's being reviewed right now
+    fs.writeSync(fd, source ? `${key}\t${source}` : key); // so the inbox can show what's being reviewed right now, and who asked
   } catch {
     return { skipped: "already being reviewed" };
   }
@@ -402,6 +413,7 @@ export function existingFeedback(repo, n, footer = "") {
   const clip = (s) => {
     let t = String(s ?? "");
     if (footer.trim()) t = t.replace(footer.trim(), "");
+    t = t.replace(OLD_FOOTER, "");
     t = t.replace(/\s+/g, " ").trim();
     return t.length > 400 ? t.slice(0, 400) + "…" : t;
   };
@@ -911,7 +923,7 @@ export function parseAgentOutput(text) {
  * Review one PR end to end. Returns { status, ... } — never throws for "expected" skips.
  * opts.force: review even if drafts/own/ignored.
  */
-export async function reviewPR(cfg, repo, number, { force = false, dryRun = false, log = console.log } = {}) {
+export async function reviewPR(cfg, repo, number, { force = false, dryRun = false, log = console.log, source = "auto" } = {}) {
   const settings = settingsFor(cfg, repo);
   const key = prKey(repo, number);
   return withLock(key, async () => {
@@ -1005,7 +1017,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       ? [...new Set(review.fixed ?? [])].map((n) => prevPosted[n - 1]).filter(Boolean).map(({ path, line, body }) => ({ path, line, body }))
       : [];
     const draft = {
-      key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid, seconds,
+      key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid, seconds, source,
       ...(settings.smartModel && picked ? { model: picked.model, effort: picked.effort, modelWhy: picked.why } : {}),
       verdict: review.verdict, summary: review.summary, comments: ok, ...(fixed.length ? { fixed } : {}), createdAt: new Date().toISOString(),
     };
@@ -1023,5 +1035,5 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     markReviewed(key, { sha: pr.headRefOid, status: "posted", event, attempts: 0, error: null, lastReview, seconds });
     notify("AI review posted", `${repo}#${number}: ${event}`, "done", { desktop: settings.desktopNotifications });
     return { status: "posted", event, draft };
-  });
+  }, source);
 }

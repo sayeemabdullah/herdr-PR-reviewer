@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import {
-  CONFIG_FILE, ROOT, deleteDraft, formatDuration, getReviewed, listActiveReviews, listDrafts, loadConfig, markReviewed,
+  CONFIG_FILE, ROOT, deleteDraft, formatDuration, getReviewed, listActiveDetails, listActiveReviews, listDrafts, loadConfig, markReviewed,
   parsePRUrl, postReview, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
 import { applyUpdate, cannotUpdateReason, checkForUpdate, installSource, installedVersion, readUpdateState } from "./update.js";
@@ -182,14 +182,16 @@ function statusRight() {
 
 function tabStrip(W) {
   const { raw } = readRawSafe();
-  const count = { inbox: drafts.length, repos: raw ? repoList(raw).length : 0 };
+  const running = listActiveReviews().length;
+  const done = Object.keys(getReviewed()).length;
+  const count = { inbox: drafts.length + (running ? ` ⟳${running}` : ""), repos: raw ? repoList(raw).length : 0, history: done };
   const name = { inbox: "Inbox", repos: "Repos", settings: "Settings", history: "History", update: "Update" };
   const next = readUpdateState().releases?.[0];
   if (next) count.update = `↑${next.version}`;
   const parts = TABS.map((t) => {
     const n = count[t] !== undefined ? ` ${count[t]}` : "";
     if (t === tab) return paint(` ${name[t]}${n} `, "inv", "cyan", "bold");
-    return " " + paint(name[t], "bold") + (n ? paint(n, (t === "inbox" || t === "update") && count[t] ? "yellow" : "gray") : "") + " ";
+    return " " + paint(name[t], "bold") + (n ? paint(n, (t === "inbox" && drafts.length) || t === "update" ? "yellow" : "gray") : "") + " ";
   });
   const left = paint(" PR Panel ", "inv", "bold") + "  " + parts.join(paint("│", "gray"));
   return [bar(left, statusRight(), W), rule(W)];
@@ -223,6 +225,24 @@ const GLOBAL_KEYS = [["tab", "next tab"], ["?", "help"], ["q", "quit"]];
 
 // ---------- Inbox ----------
 
+const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const sourceTag = (s) => (s === "link" ? paint("link", "cyan", "bold") : s === "auto" ? paint("auto", "gray") : "");
+
+/** Reviews running right now, one line each: who asked for it (a link you gave, or the watcher) and for how long. */
+function runningRows(W) {
+  const act = listActiveDetails();
+  if (!act.length) return [];
+  const frame = SPIN[Math.floor(Date.now() / 250) % SPIN.length];
+  const rows = [paint(`    REVIEWING NOW  ${act.length}`, "cyan", "bold")];
+  for (const a of act) {
+    const secs = Math.max(0, Math.round((Date.now() - a.since) / 1000));
+    const from = a.source === "link" ? paint("from a link you gave", "cyan") : a.source === "auto" ? paint("found by the watcher", "gray") : "";
+    rows.push(`   ${paint(frame, "cyan", "bold")} ${fitPlain(a.key.replace("#", " #"), Math.max(10, W - 52))}  ${from}  ${paint(formatDuration(secs), "gray")}`);
+  }
+  rows.push("");
+  return rows;
+}
+
 function renderInbox(W, H) {
   if (cur) return renderDetail(W, H);
   const head = tabStrip(W);
@@ -234,7 +254,10 @@ function renderInbox(W, H) {
   const body = [];
 
   if (!drafts.length) {
-    body.push("", "", paint("    All caught up.", "bold", "green"), "");
+    const running = runningRows(W);
+    body.push("", ...running);
+    if (running.length) body.push(paint("    Finished reviews will show up here for your final word.", "gray"), "");
+    else body.push("", paint("    All caught up.", "bold", "green"), "");
     body.push(paint("    New AI reviews show up here on their own, and wait for your final word.", "gray"), "");
     body.push(`    ${paint("n", "cyan", "bold")}  review any PR now, from its link`);
     body.push(`    ${paint("r", "cyan", "bold")}  choose which repos are watched`);
@@ -252,12 +275,13 @@ function renderInbox(W, H) {
   }
 
   const repoW = Math.min(20, Math.max(8, ...drafts.map((d) => shortRepo(d.repo).length)));
+  body.push(...runningRows(W));
   body.push(paint(`    ${"VERDICT".padEnd(10)}${"REPO".padEnd(repoW + 1)}${"PR".padEnd(7)}TITLE`, "gray"));
-  const listH = Math.min(drafts.length, Math.max(3, Math.floor(bodyH / 2) - 1));
+  const listH = Math.min(drafts.length, Math.max(3, Math.floor((bodyH - (body.length - 1)) / 2) - 1));
   const top = Math.max(0, Math.min(sel.inbox - Math.floor(listH / 2), drafts.length - listH));
   for (let i = top; i < top + listH; i++) {
     const d = drafts[i], on = i === sel.inbox;
-    const right = paint(`${included(d).length} notes  ${age(d.createdAt).padStart(3)} `, "gray");
+    const right = (sourceTag(d.source) ? sourceTag(d.source) + "  " : "") + paint(`${included(d).length} notes  ${age(d.createdAt).padStart(3)} `, "gray");
     const left = `${on ? paint(" ▸ ", "cyan", "bold") : "   "} ${badge(d.verdict)} ${fitPlain(shortRepo(d.repo), repoW)} ` +
       paint(("#" + d.number).padEnd(6), "gray") + " " + (moved(d) ? paint("! ", "yellow", "bold") : "");
     const tW = W - vlen(left) - vlen(right) - 1;
@@ -269,7 +293,7 @@ function renderInbox(W, H) {
   const d = drafts[sel.inbox];
   checkRemote(d);
   body.push("", rule(W));
-  body.push(` ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(`by ${d.author}`, "gray")}   ${remoteNote(d)}`);
+  body.push(` ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(`by ${d.author}`, "gray")}${d.source === "link" ? paint("  ·  added by link", "cyan") : d.source === "auto" ? paint("  ·  found by the watcher", "gray") : ""}   ${remoteNote(d)}`);
   body.push("");
   for (const l of wrap(d.summary, W - 4, "  ")) body.push(md(l));
   return [...head, ...pad(body, bodyH), ...foot];
@@ -583,10 +607,17 @@ function settingsKey(str, k) {
 
 // ---------- History ----------
 
+function historySummary(all) {
+  const n = {};
+  for (const [, v] of all) n[v.status ?? "?"] = (n[v.status ?? "?"] ?? 0) + 1;
+  const bits = ["posted", "drafted", "discarded", "failed"].filter((s) => n[s]).map((s) => `${n[s]} ${s}`);
+  return `${all.length} PR${all.length === 1 ? "" : "s"} reviewed so far${bits.length ? `: ${bits.join(", ")}` : ""}.`;
+}
+
 function renderHistory(W, H) {
   const head = tabStrip(W);
   const all = Object.entries(getReviewed()).sort((a, b) => (b[1].at ?? "").localeCompare(a[1].at ?? ""));
-  const foot = bottom([["↑↓", "scroll"], ...GLOBAL_KEYS], `${all.length} PR(s) reviewed so far.`, W);
+  const foot = bottom([["↑↓", "scroll"], ...GLOBAL_KEYS], historySummary(all), W);
   const bodyH = H - head.length - foot.length;
   const COLOR = { posted: "green", drafted: "yellow", discarded: "gray", failed: "red" };
   const body = all.length
@@ -1021,6 +1052,6 @@ let sig = "";
 setInterval(() => {
   let cfg = "";
   try { cfg = String(fs.statSync(CONFIG_FILE).mtimeMs); } catch {}
-  const next = JSON.stringify([listDrafts().map((d) => [d.key, d.createdAt, d.verdict]), listActiveReviews(), watcherRunning(), cfg]);
+  const next = JSON.stringify([listDrafts().map((d) => [d.key, d.createdAt, d.verdict]), listActiveReviews(), watcherRunning(), cfg, Object.keys(getReviewed()).length, listActiveReviews().length ? Math.floor(Date.now() / 1000) : 0]);
   if (next !== sig) { sig = next; refresh(); render(); }
 }, 1500);

@@ -10,7 +10,7 @@ import test from "node:test";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-e2e-")));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
-const { getReviewed, loadConfig, markReviewed, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
+const { existingFeedback, PROJECT_URL, getReviewed, listActiveDetails, listActiveReviews, loadConfig, markReviewed, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
 
 // "GitHub": a repo whose PR #1 head is a commit.
 const origin = path.join(tmp, "origin");
@@ -225,4 +225,42 @@ test("smartModel on: a big PR gets your model and effort; the cheap model is you
     await reviewPR(cfg({ smartModel: true, smallMaxLines: 1000, cheapModel: "haiku", cheapEffort: "low" }), "o/r", 1, { log: () => {} });
     assert.deepEqual(modelUsed(), ["haiku", "low"]);
   } finally { delete process.env.ADDS; }
+});
+
+test("the note at the bottom of a posted review links to the project", async () => {
+  fresh();
+  await reviewPR(cfg(), "o/r", 1, { log: () => {} });
+  const body = JSON.parse(fs.readFileSync(path.join(LOG, "posted.json"), "utf8")).body;
+  assert.match(body, /AI-assisted review via \[herdr pr-reviewer\]\(https:\/\/github\.com\/sayeemabdullah\/herdr-PR-reviewer\)/);
+  assert.equal(PROJECT_URL, "https://github.com/sayeemabdullah/herdr-PR-reviewer");
+});
+
+test("a draft remembers whether the watcher found the PR or you gave its link", async () => {
+  fresh();
+  await reviewPR(cfg({ finalWord: true }), "o/r", 1, { log: () => {} });
+  assert.equal(listDrafts()[0].source, "auto");
+  fresh();
+  await reviewPR(cfg({ finalWord: true }), "o/r", 1, { log: () => {}, source: "link" });
+  assert.equal(listDrafts()[0].source, "link");
+});
+
+test("running reviews say who asked for them and since when; an old lock without that still works", () => {
+  const locks = path.join(tmp, "state", "locks");
+  fs.writeFileSync(path.join(locks, "a.json"), "o/a#1\tlink");
+  fs.writeFileSync(path.join(locks, "b.json"), "o/b#2");
+  const act = Object.fromEntries(listActiveDetails().map((a) => [a.key, a]));
+  assert.equal(act["o/a#1"].source, "link");
+  assert.equal(act["o/b#2"].source, null);
+  assert.ok(Date.now() - act["o/a#1"].since < 5000);
+  assert.deepEqual(listActiveReviews().sort(), ["o/a#1", "o/b#2"]);
+  fs.rmSync(path.join(locks, "a.json")); fs.rmSync(path.join(locks, "b.json"));
+});
+
+test("reviews posted with the old plain note don't count as feedback from others", () => {
+  // existingFeedback strips both the current footer and the old unlinked one.
+  const old = "Looks fine.\n\n---\n<sub>🤖 AI-assisted review via herdr pr-reviewer</sub>";
+  fs.writeFileSync(path.join(bin, "gh"), fs.readFileSync(path.join(bin, "gh"), "utf8").replace('else console.log("[]");', `else if (has("/reviews?")) console.log(JSON.stringify([{ user: { login: "x" }, state: "COMMENTED", body: ${JSON.stringify(old)} }]));\nelse console.log("[]");`));
+  const out = existingFeedback("o/r", 1, "");
+  assert.match(out, /Looks fine\./, "the review itself is still read");
+  assert.ok(!/herdr pr-reviewer/.test(out), out);
 });
