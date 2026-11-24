@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 - **Reviews link back to the project.** The note at the bottom of a posted review now reads "AI-assisted review via
   [herdr pr-reviewer](https://github.com/sayeemabdullah/herdr-PR-reviewer)". Reviews posted with the old plain note are still ignored when reading what others said.
