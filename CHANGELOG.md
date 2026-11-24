@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Reviews link back to the project.** The note at the bottom of a posted review now reads "AI-assisted review via
+  [herdr pr-reviewer](https://github.com/sayeemabdullah/herdr-PR-reviewer)". Reviews posted with the old plain note are still ignored when reading what others said.
+- **History shows how many are done.** `History 12` on the tab, and the footer says how many were posted, drafted, discarded or failed.
+- **A livelier Inbox.** A **REVIEWING NOW** block lists the reviews running at this moment, with a spinner, how long each has run, and
+  whether it came from **a link you gave** or was **found by the watcher**. The tab shows `Inbox 3 ⟳2`. Finished reviews are tagged
+  `link` or `auto`, and the preview says "added by link". Reviews written before this update show no tag.
+
 ## 0.7.0
 
 - **Update tab.** PR Panel has a fifth tab, **Update** (`u`): the version you have, the newest release with its release notes, and

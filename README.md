@@ -146,7 +146,7 @@ It replies with a verdict (**approve**, **request changes** or **comment**), a s
 - Draft PRs wait until they're marked ready for review.
 - A diff over `maxDiffChars` is split into parts of whole files (at most `maxParts`), each reviewed on its own and merged into one review. Each part is a full run, so a big PR costs that many reviews. `"splitLarge": false` goes back to cutting it off.
 - Want it cheaper? [Smarter model choice](#smarter-model-choice) uses a lighter model for small or docs-only PRs.
-- When you post, GitHub gets **one review from your account**: the summary as the body, the line comments that are on, and a short "AI-assisted" note at the bottom.
+- When you post, GitHub gets **one review from your account**: the summary as the body, the line comments that are on, and a short "AI-assisted" note at the bottom that links to this project.
 
 </details>
 
@@ -185,10 +185,10 @@ right now, and <kbd>?</kbd> shows all of them.
 
 | Tab | What it's for |
 |---|---|
-| **Inbox** | AI reviews waiting for your final word: read, change, post or discard them |
+| **Inbox** | AI reviews waiting for your final word: read, change, post or discard them. Reviews running now are listed on top |
 | **Repos** | which repos are watched. Add one by picking from your GitHub repos, remove one with <kbd>x</kbd> |
 | **Settings** | model and effort, final word, cheaper model for small PRs, big-PR limits, repos and authors to skip, how often to check, and more |
-| **History** | what was posted, discarded or failed, how long each review took, and why |
+| **History** | what was posted, discarded or failed, how long each review took, and why. The tab shows how many PRs are done (`History 12`) |
 | **Update** | the version you have, the newest release and what's new in it, and a key to install it. [More below](#update) |
 
 Open it with any of:
@@ -211,7 +211,12 @@ You don't have to open it to know what's going on: the watcher shows up in herdr
 
 ### Inbox
 
-The top line shows whether the watcher is running and which PR it's reviewing right now. The list updates by itself. Each review is checked against GitHub:
+The top line shows whether the watcher is running and which PR it's reviewing right now. The list updates by itself.
+
+- **Reviewing now.** A block at the top lists every review that is running, with how long it has run and where it came from: **a link you gave** (<kbd>n</kbd>) or **found by the watcher**. The tab shows it too, like `Inbox 3 ⟳2`.
+- **Where a review came from.** Each finished review is tagged `link` (you pasted its link) or `auto` (the watcher found it), and the preview says so. Reviews written before this tag existed show nothing.
+
+Each review is checked against GitHub:
 
 | Shows | Means |
 |---|---|
