@@ -9,7 +9,7 @@
 
 <p><a href="https://github.com/sayeemabdullah/herdr-PR-reviewer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/sayeemabdullah/herdr-PR-reviewer/ci.yml?branch=master&style=flat-square&label=CI"></a> <a href="https://herdr.dev/plugins/"><img alt="herdr plugin, 0.8 or newer" src="https://img.shields.io/badge/herdr%20plugin-%E2%89%A5%200.8-222?style=flat-square"></a> <a href="https://nodejs.org"><img alt="Node 22 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022-339933?style=flat-square&logo=node.js&logoColor=white"></a> <a href="https://claude.com/claude-code"><img alt="Claude Code, restricted mode" src="https://img.shields.io/badge/Claude%20Code-restricted-D97757?style=flat-square"></a> <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-0969da?style=flat-square"></a></p>
 
-[Quick start](#quick-start) · [How it works](#how-it-works) · [PR Panel](#panel) · [Settings](#settings) · [Safety](#safety) · [Contributing](CONTRIBUTING.md)
+[Install](#quick-start) · [Update](#update) · [How it works](#how-it-works) · [PR Panel](#panel) · [Settings](#settings) · [Safety](#safety) · [Contributing](CONTRIBUTING.md)
 
 <br>
 
@@ -78,6 +78,15 @@ herdr plugin install sayeemabdullah/herdr-PR-reviewer
 herdr plugin action invoke pr-reviewer.install-cli   # optional: adds the `pr-panel` command
 ```
 
+Check that it's there, and which version you got:
+
+```sh
+herdr plugin list      # - pr-reviewer (PR Reviewer) enabled [github:sayeemabdullah/herdr-PR-reviewer@v0.8.0]
+```
+
+That installs the latest release. To pin a version, add `--ref v0.8.0`. To remove it: `herdr plugin uninstall pr-reviewer`.
+Your settings live in a separate config folder, so reinstalling or updating never loses them.
+
 **2. Pick your repos.** Only the repos you list are reviewed. A PR you're asked to review in any other repo (a work repo, say) is ignored, unless you change that in Settings → **Which repos**.
 Open [PR Panel](#panel) and go to the **Repos** tab (<kbd>r</kbd>): press <kbd>a</kbd> and pick from your
 GitHub repos. The model and final word are in the **Settings** tab (<kbd>s</kbd>). Or edit the file yourself:
@@ -112,6 +121,8 @@ herdr plugin action invoke pr-reviewer.watch
 
 > [!TIP]
 > Config changes apply on the next check, within 3 minutes. Nothing needs restarting.
+
+**5. Keep it up to date.** Open PR Panel and press <kbd>u</kbd> (the **Update** tab). When a newer release exists, the tab shows `↑0.8.0`: press <kbd>Enter</kbd> to install it. [How updates work](#update).
 
 <a id="how-it-works"></a>
 
@@ -310,18 +321,25 @@ A list (repos to skip, risky paths, …) is typed as comma separated text: press
 
 PR Reviewer is installed from GitHub, and herdr doesn't update it by itself. The **Update** tab (<kbd>u</kbd>) does:
 
-- it shows the version you have, the newest release and **what's new** in it (the release notes). A `↑0.7.0` on the tab says a newer one exists;
+- it shows the version you have, the newest release and **what's new** in it (the release notes). A `↑0.8.0` on the tab says a newer one exists;
 - <kbd>Enter</kbd> installs it (asks first). The watcher restarts on the new version once no review is running, and you reopen PR Panel (<kbd>q</kbd>) to use it;
 - <kbd>c</kbd> checks GitHub now, otherwise it looks about every 6 hours while the watcher runs, and tells you once per version;
 - <kbd>a</kbd> turns **automatic updates** on: the watcher then installs a newer release by itself, when no review is running, and restarts. It is **off by default**, because it installs code on your machine without asking.
 
-Without the panel: `pr-panel update` says whether there is a newer release, and `pr-panel update --install` installs it. Or reinstall by hand:
-`herdr plugin install sayeemabdullah/herdr-PR-reviewer`.
+**Three ways to update**
+
+| How | Does |
+|---|---|
+| **In PR Panel** | press <kbd>u</kbd>, then <kbd>Enter</kbd> on the newer release |
+| **In a terminal** | `pr-panel update` says whether there is a newer release, and `pr-panel update --install` installs it |
+| **By hand** | `herdr plugin install sayeemabdullah/herdr-PR-reviewer`, then restart the watcher (`herdr plugin action invoke pr-reviewer.watch`) |
+
+After an update, quit PR Panel (<kbd>q</kbd>) and open it again to use the new version. Check which one you have with `herdr plugin list`, or at the top of the Update tab.
 
 What it will and won't do: it installs only a **published release** of this repo (`vX.Y.Z`), never `master`, only one **newer** than yours, and never over a plugin you linked from a local folder. It uses herdr's own `plugin install`, so your `config.json` and your inbox stay as they are. If the result isn't the version it asked for, it puts the old one back. Turn the checking off with `"checkForUpdates": false`.
 
 > [!NOTE]
-> The Update tab arrives with the release that adds it. Install that one by hand once (the command above); after that it can update itself.
+> The Update tab arrived in 0.7.0. If you have 0.6.0 or older, update by hand once (the third way above); after that it can update itself.
 
 ### Shortcuts
 
