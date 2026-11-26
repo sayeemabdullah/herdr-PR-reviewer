@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0
+
+- **New: recheck any PR from History.** Pick a row with <kbd>↑</kbd><kbd>↓</kbd> and press <kbd>r</kbd> (or <kbd>⏎</kbd>) to review that PR again from scratch.
+  The new review goes to the Inbox as a draft; nothing is posted until you say so. <kbd>o</kbd> opens the PR in the browser.
+  In History, <kbd>r</kbd> now means recheck instead of jumping to Repos (the other tab keys still work).
+- **New, off by default: recheck after replies.** Turn on `recheck` (Settings: "Recheck replies") and a PR you reviewed is looked at again after
+  `recheckHours` (default 24) when the author replied to one of your comments or resolved it, even with no new commit. The AI sees its earlier review,
+  the replies and how many threads are resolved, and approves if nothing important is left. It follows your Final word setting, and shows in the Inbox
+  tagged `recheck`. Closed or merged PRs, approvals and unchanged threads are skipped.
+
 ## 0.8.1
 
 - **Fixed: keys sometimes did nothing in PR Panel.** Opening the Update tab asked GitHub and herdr in a way that froze the whole panel until they
