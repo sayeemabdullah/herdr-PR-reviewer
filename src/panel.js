@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 import {
   CONFIG_FILE, HERDR, ROOT, deleteDraft, formatDuration, getReviewed, listActiveDetails, listActiveReviews, listDrafts, loadConfig, markReviewed,
-  parsePRUrl, postReview, saveDraft, settingsFor, watcherRunning,
+  parsePRUrl, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
 import { cannotUpdateReason, installedVersion, parseInstallSource, readUpdateState } from "./update.js";
 import {
@@ -124,6 +124,7 @@ let choice = null; // { label, options: [[key, label, fn]] }
 let picker = null; // { query, sel, items, loading, error } — add-a-repo picker
 let help = false;
 let flash = null; // { text, color, until }
+const posting = new Set(); // draft keys being posted right now, in a child process
 let busy = null; // text shown while a blocking op runs
 const remote = {}; // key -> { checking, sha, state } — live PR status from GitHub
 
@@ -282,7 +283,7 @@ function renderInbox(W, H) {
   const top = Math.max(0, Math.min(sel.inbox - Math.floor(listH / 2), drafts.length - listH));
   for (let i = top; i < top + listH; i++) {
     const d = drafts[i], on = i === sel.inbox;
-    const right = (sourceTag(d.source) ? sourceTag(d.source) + "  " : "") + paint(`${included(d).length} notes  ${age(d.createdAt).padStart(3)} `, "gray");
+    const right = (posting.has(d.key) ? paint("posting…", "cyan", "bold") + "  " : sourceTag(d.source) ? sourceTag(d.source) + "  " : "") + paint(`${included(d).length} notes  ${age(d.createdAt).padStart(3)} `, "gray");
     const left = `${on ? paint(" ▸ ", "cyan", "bold") : "   "} ${badge(d.verdict)} ${fitPlain(shortRepo(d.repo), repoW)} ` +
       paint(("#" + d.number).padEnd(6), "gray") + " " + (moved(d) ? paint("! ", "yellow", "bold") : "");
     const tW = W - vlen(left) - vlen(right) - 1;
@@ -667,6 +668,7 @@ function askRecheck(key, v) {
  * (a blocking call here froze every key for as long as GitHub took).
  */
 const UPDATE_JS = path.join(ROOT, "src", "update.js");
+const POST_JS = path.join(ROOT, "src", "post.js");
 
 /** Opening the tab: find out how the plugin was installed, and look for a release if the last look is old. */
 function openUpdateTab() {
@@ -878,6 +880,7 @@ function editConfigFile() {
 }
 
 function editSummary(d) {
+  if (stillPosting(d)) return;
   const edited = editText(d.summary, "md");
   if (edited === null) return setFlash("No changes.", "gray");
   d.summary = edited.trim() || d.summary;
@@ -886,6 +889,7 @@ function editSummary(d) {
 }
 
 function editAll(d) {
+  if (stillPosting(d)) return;
   const { verdict, summary, comments } = d;
   const edited = editText(JSON.stringify({ verdict, summary, comments }, null, 2), "json");
   if (edited === null) return setFlash("No changes.", "gray");
@@ -907,27 +911,34 @@ function setVerdict(d, v) {
   setFlash(`Will post as ${VERDICT[v].words.toUpperCase()}.`);
 }
 
+function stillPosting(d) {
+  if (!posting.has(d.key)) return false;
+  setFlash(`${d.repo}#${d.number} is still being posted.`, "yellow");
+  return true;
+}
+
 function askPost(d) {
+  if (stillPosting(d)) return;
   const r = remote[d.key];
   const warn = r?.state && r.state !== "OPEN" ? paint(` The PR is ${r.state.toLowerCase()}.`, "yellow")
     : moved(d) ? paint(" The PR has new commits since this review.", "yellow") : "";
   confirm = {
     label: `Post ${paint(VERDICT[d.verdict].words.toUpperCase(), "bold", VERDICT[d.verdict].color)} with ${included(d).length} comment(s)${d.fixed?.length && !d.resolveOff ? ` and mark ${d.fixed.length} fixed thread(s) resolved` : ""} to ${paint(`${d.repo}#${d.number}`, "bold")}?${warn}`,
     onYes: () => {
-      busy = `Posting to ${d.repo}#${d.number}…`;
+      if (posting.has(d.key)) return;
+      saveDraft(d); // the child posts what is saved, including your edits
+      posting.add(d.key);
+      setFlash(`Posting to ${d.repo}#${d.number}…`, "cyan", 120000);
       render();
-      setImmediate(() => {
-        try {
-          const event = postReview(d, settingsFor(loadConfig(), d.repo));
-          deleteDraft(d.key);
-          markReviewed(d.key, { sha: d.headSha, status: "posted", event, error: null,
-            lastReview: { verdict: d.verdict, summary: d.summary, comments: included(d) } });
-          setFlash(`Posted to ${d.repo}#${d.number} as ${event}${d.resolvedCount ? `, ${d.resolvedCount} thread(s) resolved` : ""}.`);
-          cur = null;
-        } catch (e) {
-          setFlash(String(e.message).split("\n")[0], "red", 8000);
-        }
-        busy = null;
+      // A child process, so the panel keeps working while GitHub answers.
+      execFile(process.execPath, [POST_JS, d.key], { timeout: 180000 }, (err, stdout) => {
+        posting.delete(d.key);
+        let res = null;
+        try { res = JSON.parse(String(stdout).trim().split("\n").pop()); } catch {}
+        if (res?.ok) {
+          setFlash(`Posted to ${d.repo}#${d.number} as ${res.event}${res.resolved ? `, ${res.resolved} thread(s) resolved` : ""}.`);
+          if (cur?.key === d.key) cur = null;
+        } else setFlash(res?.error ?? (err ? `Posting failed: ${String(err.message).split("\n")[0]}` : "Posting failed."), "red", 8000);
         refresh();
         render();
       });
@@ -936,6 +947,7 @@ function askPost(d) {
 }
 
 function askDiscard(d) {
+  if (stillPosting(d)) return;
   confirm = {
     label: `Discard the review of ${paint(`${d.repo}#${d.number}`, "bold")}? Nothing goes to GitHub.`,
     onYes: () => {
@@ -1015,6 +1027,8 @@ function onKey(str, key = {}) {
 
   if (tab === "inbox" && cur) {
     const d = cur, page = Math.max(1, (out.rows || 24) - 10);
+    // While it is being posted, nothing may change it: saving would bring the draft back after it was posted.
+    if (/^[1-9acrxeEpd]$/.test(str ?? "") && stillPosting(d)) return render();
     if (k === "escape" || k === "left" || k === "b") cur = null;
     else if (k === "up" || k === "k") scroll = Math.max(0, scroll - 1);
     else if (k === "down" || k === "j") scroll++;

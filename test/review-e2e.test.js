@@ -1,7 +1,7 @@
 // End to end: reviewPR against a stub `gh` and a stub `claude` on PATH, with a real local git repo as "GitHub".
 // Run with: node --test
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +10,7 @@ import test from "node:test";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-e2e-")));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
-const { existingFeedback, PROJECT_URL, getReviewed, listActiveDetails, listActiveReviews, loadConfig, markReviewed, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
+const { existingFeedback, PROJECT_URL, getDraft, postStoredDraft, getReviewed, listActiveDetails, listActiveReviews, loadConfig, markReviewed, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
 
 // "GitHub": a repo whose PR #1 head is a commit.
 const origin = path.join(tmp, "origin");
@@ -281,4 +281,42 @@ test("a recheck reviews the same commit again with the earlier review in front o
   assert.equal(r.draft.source, "recheck");
   assert.ok(seen().followUp && seen().recheck);
   assert.equal(seen().sinceDiff, false); // the code didn't change, so there is no "since" diff
+});
+
+test("posting a saved draft sends it, removes it from the inbox and records it in the history", async () => {
+  fresh();
+  await reviewPR(cfg({ finalWord: true }), "o/r", 1, { log: () => {} });
+  assert.ok(getDraft("o/r#1"));
+  const res = postStoredDraft("o/r#1", cfg());
+  assert.equal(res.event, "APPROVE");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(LOG, "posted.json"), "utf8")).event, "APPROVE");
+  assert.equal(getDraft("o/r#1"), null);
+  assert.equal(getReviewed()["o/r#1"].status, "posted");
+  assert.throws(() => postStoredDraft("o/r#1", cfg()), /no longer in the inbox/); // a second post finds nothing, so it can't post twice
+});
+
+test("the post CLI (what the panel runs in the background) prints one JSON line, for success and for failure", async () => {
+  fresh();
+  await reviewPR(cfg({ finalWord: true }), "o/r", 1, { log: () => {} });
+  const run = (...a) => spawnSync(process.execPath, [path.join(import.meta.dirname, "..", "src", "post.js"), ...a], { encoding: "utf8", env: process.env });
+  const ok = run("o/r#1");
+  assert.deepEqual([ok.status, JSON.parse(ok.stdout).ok, JSON.parse(ok.stdout).event], [0, true, "APPROVE"]);
+  const gone = run("o/r#1");
+  assert.equal(gone.status, 1);
+  assert.match(JSON.parse(gone.stdout).error, /no longer in the inbox/);
+});
+
+test("a fixed comment keeps its severity, so it matches the text that was posted; earlier comments are remembered across reviews", async () => {
+  fresh();
+  const lastReview = { verdict: "request_changes", summary: "s", comments: [
+    { path: "src/app.js", line: 2, body: "null?", severity: "blocker" }, { path: "src/app.js", line: 1, body: "naming", severity: "nit" }] };
+  markReviewed("o/r#1", { sha: "0".repeat(40), status: "posted", event: "COMMENT", lastReview });
+  process.env.FIXED = "[1]";
+  try {
+    const r = await reviewPR(cfg({ finalWord: true, resolveFixed: true }), "o/r", 1, { log: () => {} });
+    assert.deepEqual(r.draft.fixed, [{ path: "src/app.js", line: 2, body: "null?", severity: "blocker" }]);
+  } finally { delete process.env.FIXED; }
+  // The nit that still stands is remembered next to the new comment.
+  const remembered = getReviewed()["o/r#1"].lastReview.comments.map((c) => c.body);
+  assert.ok(remembered.includes("naming") && remembered.includes("nit") && !remembered.includes("null?"));
 });
