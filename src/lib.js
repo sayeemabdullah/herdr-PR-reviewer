@@ -189,6 +189,8 @@ export const DEFAULTS = {
     "**/*.snap", "**/dist/**", "**/vendor/**",
   ],
   instructions: "",
+  recheck: false, // look again at PRs you reviewed where the author replied or resolved a comment (no new commit needed)
+  recheckHours: 24, // how long after a review (or the last look) before the PR is looked at again
   resolveFixed: false, // on a re-review, mark the earlier comments the AI says are now fixed as resolved on GitHub (when you post)
   splitLarge: true, // a PR whose diff is over maxDiffChars is reviewed in several passes, not cut off
   maxParts: 4, // at most this many passes (each one is a full AI run)
@@ -623,6 +625,44 @@ export function placeComments(comments, valid) {
 const THREADS_QUERY = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){" +
   "reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{body path author{login}}}}}}}}";
 
+const ACTIVITY_QUERY = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){" +
+  "state reviewThreads(first:100){nodes{isResolved comments(first:50){nodes{author{login}}}}}}}}";
+
+/**
+ * What happened to the threads YOU started: how many are resolved, how many have a reply from someone else, how many are still open.
+ * `sig` changes whenever that changes, so one change triggers one recheck. Pure; `nodes` is GitHub's reviewThreads list.
+ */
+export function summarizeThreads(nodes, me) {
+  const mine = (nodes ?? []).filter((t) => t.comments?.nodes?.[0]?.author?.login?.toLowerCase() === me.toLowerCase());
+  const resolved = mine.filter((t) => t.isResolved).length;
+  const replied = mine.filter((t) => t.comments.nodes.slice(1).some((c) => c.author?.login?.toLowerCase() !== me.toLowerCase())).length;
+  return { total: mine.length, resolved, replied, open: mine.length - resolved, sig: `${resolved}/${replied}` };
+}
+
+/** The PR's state ("OPEN", "MERGED", "CLOSED") and what happened to your threads, or null if GitHub can't say. */
+export function threadActivity(repo, n) {
+  try {
+    const [owner, name] = repo.split("/");
+    const r = run("gh", ["api", "graphql", "-f", `query=${ACTIVITY_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${n}`],
+      { allowFail: true, timeoutMs: 30000 });
+    if (!r.ok) return null;
+    const pr = JSON.parse(r.stdout).data?.repository?.pullRequest;
+    return pr ? { state: pr.state, ...summarizeThreads(pr.reviewThreads?.nodes, currentUser()) } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Is it time to look at this reviewed PR again? Only a posted review that wasn't an approval, once `recheckHours` have passed
+ * since it was posted or last looked at. `lastLook` is a time in ms (or 0). Pure; the watcher then asks GitHub (threadActivity).
+ */
+export function recheckDue(prev, settings, now = Date.now(), lastLook = 0) {
+  if (!settings.recheck || prev?.status !== "posted" || prev.event === "APPROVE") return false;
+  const since = Math.max(Date.parse(prev.at ?? "") || 0, lastLook);
+  return now - since >= Math.max(1, settings.recheckHours ?? 24) * 3600 * 1000;
+}
+
 /**
  * Mark review threads as resolved on GitHub: the ones where YOUR earlier comment (same file, same text as posted) is the first
  * comment and which are still open. Never throws; returns how many were resolved.
@@ -851,8 +891,13 @@ ${askFixed ? `
 Also list in "fixed" the NUMBERS of the earlier comments above that the changes since then clearly fixed. Only list one
 you checked in the code; if you are unsure, leave it out. (Each one listed gets marked resolved on GitHub.)
 ` : ""}
-Focus on what changed since then (shown below as "Changes since your last review"). Say which earlier
-points are now fixed and which still stand. Don't repeat an earlier inline comment unless it's still unfixed
+${previous.recheckNote !== undefined ? `This is a RECHECK, not a new push: the code is the same commit. Time has passed, so the author may have replied or resolved
+your comments. ${previous.recheckNote}
+Read the replies under "Existing review comments" and look at the code. For each earlier point, decide: fixed, answered well enough
+(the author's reason holds), or still a problem. If nothing important is left, the verdict is "approve" and the summary says so.
+If something still stands, keep the verdict and name only what is left.
+` : `Focus on what changed since then (shown below as "Changes since your last review"). Say which earlier
+points are now fixed and which still stand. `}Don't repeat an earlier inline comment unless it's still unfixed
 and important; never post the same comment twice.
 ` : ""}${feedback ? `
 Others have already commented (inside <pr>). Don't repeat their points; add to them only if you have something new.
@@ -923,7 +968,7 @@ export function parseAgentOutput(text) {
  * Review one PR end to end. Returns { status, ... } — never throws for "expected" skips.
  * opts.force: review even if drafts/own/ignored.
  */
-export async function reviewPR(cfg, repo, number, { force = false, dryRun = false, log = console.log, source = "auto" } = {}) {
+export async function reviewPR(cfg, repo, number, { force = false, dryRun = false, log = console.log, source = "auto", recheck = false } = {}) {
   const settings = settingsFor(cfg, repo);
   const key = prKey(repo, number);
   return withLock(key, async () => {
@@ -950,13 +995,17 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       // Follow-up review: what we said last time + what changed since.
       const prevState = getReviewed()[key];
       let previous = null;
-      if (prevState?.lastReview && prevState.sha && prevState.sha !== pr.headRefOid) {
+      if (prevState?.lastReview && prevState.sha && (prevState.sha !== pr.headRefOid || recheck)) {
         previous = { sha: prevState.sha, review: prevState.lastReview, sinceDiff: null };
-        if (checkout) {
+        if (recheck) {
+          const t = threadActivity(repo, number);
+          previous.recheckNote = t ? `${t.resolved} of your ${t.total} comment thread(s) are now marked resolved on GitHub, ${t.replied} got a reply, ${t.open} are still open.` : "";
+        } else if (checkout) {
           const since = diffBetween(checkout.cache, prevState.sha, pr.headRefOid);
           if (since) previous.sinceDiff = filterDiff(since, settings.ignorePaths).diff;
         }
-        log(`  follow-up review since ${prevState.sha.slice(0, 7)}${previous.sinceDiff ? "" : " (old commit gone; full diff only)"}`);
+        log(recheck ? "  rechecking: looking at replies and resolved comments"
+          : `  follow-up review since ${prevState.sha.slice(0, 7)}${previous.sinceDiff ? "" : " (old commit gone; full diff only)"}`);
       }
       prevPosted = postedComments(previous?.review);
       const feedback = existingFeedback(repo, number, settings.footer);

@@ -227,7 +227,7 @@ const GLOBAL_KEYS = [["tab", "next tab"], ["?", "help"], ["q", "quit"]];
 // ---------- Inbox ----------
 
 const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const sourceTag = (s) => (s === "link" ? paint("link", "cyan", "bold") : s === "auto" ? paint("auto", "gray") : "");
+const sourceTag = (s) => (s === "link" ? paint("link", "cyan", "bold") : s === "auto" ? paint("auto", "gray") : s === "recheck" ? paint("recheck", "yellow", "bold") : "");
 
 /** Reviews running right now, one line each: who asked for it (a link you gave, or the watcher) and for how long. */
 function runningRows(W) {
@@ -237,7 +237,7 @@ function runningRows(W) {
   const rows = [paint(`    REVIEWING NOW  ${act.length}`, "cyan", "bold")];
   for (const a of act) {
     const secs = Math.max(0, Math.round((Date.now() - a.since) / 1000));
-    const from = a.source === "link" ? paint("from a link you gave", "cyan") : a.source === "auto" ? paint("found by the watcher", "gray") : "";
+    const from = a.source === "link" ? paint("from a link you gave", "cyan") : a.source === "auto" ? paint("found by the watcher", "gray") : a.source === "recheck" ? paint("rechecking a reply", "yellow") : "";
     rows.push(`   ${paint(frame, "cyan", "bold")} ${fitPlain(a.key.replace("#", " #"), Math.max(10, W - 52))}  ${from}  ${paint(formatDuration(secs), "gray")}`);
   }
   rows.push("");
@@ -294,7 +294,7 @@ function renderInbox(W, H) {
   const d = drafts[sel.inbox];
   checkRemote(d);
   body.push("", rule(W));
-  body.push(` ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(`by ${d.author}`, "gray")}${d.source === "link" ? paint("  ·  added by link", "cyan") : d.source === "auto" ? paint("  ·  found by the watcher", "gray") : ""}   ${remoteNote(d)}`);
+  body.push(` ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(`by ${d.author}`, "gray")}${d.source === "link" ? paint("  ·  added by link", "cyan") : d.source === "auto" ? paint("  ·  found by the watcher", "gray") : d.source === "recheck" ? paint("  ·  rechecked after a reply or resolved comment", "yellow") : ""}   ${remoteNote(d)}`);
   body.push("");
   for (const l of wrap(d.summary, W - 4, "  ")) body.push(md(l));
   return [...head, ...pad(body, bodyH), ...foot];

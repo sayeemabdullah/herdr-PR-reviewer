@@ -38,7 +38,7 @@ Reviews wait in an inbox until you **post**, edit or discard them. Or turn that 
 <td width="33%" valign="top">
 
 ### Follow-ups
-After new commits it gets its previous review and the changes since, says what's fixed (and can mark those threads resolved), and doesn't repeat itself.
+After new commits it gets its previous review and the changes since, says what's fixed (and can mark those threads resolved), and doesn't repeat itself. Optionally (`recheck`, off by default) it also looks again after a set time when the author replied to a comment or resolved it, and can approve.
 
 </td>
 </tr>
@@ -378,6 +378,8 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 | `ignoreAuthors` | bots | PR authors to skip |
 | `skipDrafts` | `true` | leave draft PRs alone |
 | `rereviewOnPush` | `true` | review again when new commits are pushed |
+| `recheck` | `false` | off by default. When on, a PR you reviewed is looked at again after `recheckHours` if the author replied to one of your comments or resolved it, even with no new commit. It may then approve. Needs the PR to still be open |
+| `recheckHours` | `24` | how long after posting (or after the last look) before that check. One PR is asked about at most once per this time, and reviewed again only when something changed |
 
 </details>
 

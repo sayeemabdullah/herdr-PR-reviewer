@@ -50,6 +50,7 @@ const fs = require("fs"), a = process.argv.slice(2), stdin = fs.readFileSync(0, 
 fs.appendFileSync(${JSON.stringify(LOG)} + "/claude.parts", JSON.stringify(/LARGE PR, PART (\\d) OF (\\d)/.exec(stdin)?.slice(1) ?? null) + "\\n");
 fs.writeFileSync(${JSON.stringify(LOG)} + "/claude.json", JSON.stringify({ argv: a, cwd: process.cwd(), stdinHasPrompt: stdin.includes("<pr>"), numbered: /\\n1\\. src\\/app\\.js:2: null\\?/.test(stdin), asksFixed: stdin.includes('"fixed": ['),
   rules: stdin.includes("<rules>\\nAlways check input validation.\\n</rules>"),
+  recheck: stdin.includes("This is a RECHECK"), followUp: stdin.includes("FOLLOW-UP REVIEW"), sinceDiff: stdin.includes("Changes since your last review"),
   rulesBeforePr: stdin.indexOf("<rules>") >= 0 && stdin.indexOf("<rules>") < stdin.lastIndexOf("<pr>") }));
 const R = ${REVIEW}; if (process.env.FIXED) R.fixed = JSON.parse(process.env.FIXED); console.log(JSON.stringify(R));
 `);
@@ -263,4 +264,21 @@ test("reviews posted with the old plain note don't count as feedback from others
   const out = existingFeedback("o/r", 1, "");
   assert.match(out, /Looks fine\./, "the review itself is still read");
   assert.ok(!/herdr pr-reviewer/.test(out), out);
+});
+
+test("a recheck reviews the same commit again with the earlier review in front of it, and may approve", async () => {
+  fresh();
+  const lastReview = { verdict: "request_changes", summary: "Needs a null check.", comments: [{ path: "src/app.js", line: 2, body: "null?" }] };
+  markReviewed("o/r#1", { sha, status: "posted", event: "REQUEST_CHANGES", lastReview });
+  // Without the flag the same commit is just reviewed from scratch.
+  await reviewPR(cfg({ finalWord: true }), "o/r", 1, { log: () => {} });
+  assert.equal(seen().followUp, false);
+  fresh();
+  markReviewed("o/r#1", { sha, status: "posted", event: "REQUEST_CHANGES", lastReview });
+  const r = await reviewPR(cfg({ finalWord: true }), "o/r", 1, { log: () => {}, recheck: true, source: "recheck" });
+  assert.equal(r.status, "drafted");
+  assert.equal(r.draft.verdict, "approve");
+  assert.equal(r.draft.source, "recheck");
+  assert.ok(seen().followUp && seen().recheck);
+  assert.equal(seen().sinceDiff, false); // the code didn't change, so there is no "since" diff
 });
