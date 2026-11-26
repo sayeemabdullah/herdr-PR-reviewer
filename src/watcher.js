@@ -1,7 +1,7 @@
 // Poll loop: reviews the open PRs your config asks for (see listPRsToReview in lib.js).
 import fs from "node:fs";
 import {
-  CONFIG_FILE, HERDR, WATCHER_FILE, getReviewed, headSha, listActiveReviews, listDrafts, listPRsToReview,
+  CONFIG_FILE, HERDR, WATCHER_FILE, getReviewed, headSha, recheckDue, threadActivity, listActiveReviews, listDrafts, listPRsToReview,
   loadConfig, markReviewed, prKey, reviewPR, run, settingsFor, sleep, writeLauncher,
 } from "./lib.js";
 import { createReporter, releaseAgent, statusFor } from "./agent-status.js";
@@ -10,6 +10,7 @@ import { autoUpdateStep, restartRequested, restartWatcher } from "./update.js";
 writeLauncher();
 
 const MAX_ATTEMPTS = 3;
+const lastLook = new Map(); // PR key → when the recheck last asked GitHub (ms), so one PR is asked about at most once per recheckHours
 const PANE = process.env.HERDR_PANE_ID;
 const ts = () => new Date().toLocaleTimeString();
 const log = (...a) => console.log(`[${ts()}]`, ...a);
@@ -118,13 +119,33 @@ while (true) {
     jobs.push({ pr, key, sha, prev });
   }
 
+  // Recheck: PRs we posted on, where the author may have replied or resolved a comment since. Not tied to the PR list above, because
+  // once you've reviewed a PR it is no longer "waiting for your review".
+  for (const [key, prev] of Object.entries(reviewed)) {
+    const m = /^(.+)#(\d+)$/.exec(key);
+    if (!m || jobs.some((j) => j.key === key)) continue;
+    const [, repo, num] = m;
+    const s = settingsFor(cfg, repo);
+    if (cfg.ignoreRepos.some((r) => r.toLowerCase() === repo) || !recheckDue(prev, s, Date.now(), lastLook.get(key) ?? 0)) continue;
+    lastLook.set(key, Date.now());
+    const t = threadActivity(repo, num);
+    if (!t) continue;
+    if (t.state !== "OPEN") { lastLook.set(key, Infinity); continue; } // closed or merged: nothing to recheck
+    if (t.sig === (prev.recheckSig ?? "0/0") || t.sig === "0/0") continue; // nothing new since the last look
+    let sha;
+    try { sha = headSha(repo, num); } catch { continue; }
+    if (sha !== prev.sha) continue; // a new commit is the normal re-review's job
+    jobs.push({ pr: { repo, number: Number(num), title: key }, key, sha, prev, recheck: t.sig });
+  }
+
   // Run them, up to maxParallel at a time, so one slow review doesn't hold up the rest.
-  const runJob = async ({ pr, key, sha, prev }) => {
+  const runJob = async ({ pr, key, sha, prev, recheck }) => {
     const tag = (...a) => log(`[${key}]`, ...a);
-    tag(`reviewing "${pr.title}"`);
+    tag(recheck ? "rechecking: the author replied or resolved a comment" : `reviewing "${pr.title}"`);
     setTimeout(reportStatus, 200); // the review's lock file exists by now → "working"
     try {
-      const r = await reviewPR(cfg, pr.repo, pr.number, { log: (m) => tag(String(m).trim()) });
+      const r = await reviewPR(cfg, pr.repo, pr.number, { log: (m) => tag(String(m).trim()), ...(recheck ? { recheck: true, source: "recheck" } : {}) });
+      if (recheck && !r.skipped) markReviewed(key, { recheckSig: recheck });
       if (r.skipped) tag(`skipped: ${r.skipped}`);
       else tag(`${r.status}: ${r.event ?? r.draft.verdict} (${r.draft.comments.length} inline comments)`);
     } catch (e) {

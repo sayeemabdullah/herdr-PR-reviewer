@@ -116,7 +116,7 @@ let updSrc = null; // how the plugin was installed, looked up when the Update ta
 let tab = "inbox";
 let drafts = [];
 let cur = null; // review open in the inbox (detail view)
-const sel = { inbox: 0, repos: 0, settings: 0 };
+const sel = { inbox: 0, repos: 0, settings: 0, history: 0 };
 let scroll = 0; // detail / history scroll offset
 let input = null; // { label, value, hint, onSubmit } — one-line text prompt
 let confirm = null; // { label, onYes }
@@ -227,7 +227,7 @@ const GLOBAL_KEYS = [["tab", "next tab"], ["?", "help"], ["q", "quit"]];
 // ---------- Inbox ----------
 
 const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const sourceTag = (s) => (s === "link" ? paint("link", "cyan", "bold") : s === "auto" ? paint("auto", "gray") : "");
+const sourceTag = (s) => (s === "link" ? paint("link", "cyan", "bold") : s === "auto" ? paint("auto", "gray") : s === "recheck" ? paint("recheck", "yellow", "bold") : "");
 
 /** Reviews running right now, one line each: who asked for it (a link you gave, or the watcher) and for how long. */
 function runningRows(W) {
@@ -237,7 +237,7 @@ function runningRows(W) {
   const rows = [paint(`    REVIEWING NOW  ${act.length}`, "cyan", "bold")];
   for (const a of act) {
     const secs = Math.max(0, Math.round((Date.now() - a.since) / 1000));
-    const from = a.source === "link" ? paint("from a link you gave", "cyan") : a.source === "auto" ? paint("found by the watcher", "gray") : "";
+    const from = a.source === "link" ? paint("from a link you gave", "cyan") : a.source === "auto" ? paint("found by the watcher", "gray") : a.source === "recheck" ? paint("rechecking a reply", "yellow") : "";
     rows.push(`   ${paint(frame, "cyan", "bold")} ${fitPlain(a.key.replace("#", " #"), Math.max(10, W - 52))}  ${from}  ${paint(formatDuration(secs), "gray")}`);
   }
   rows.push("");
@@ -294,7 +294,7 @@ function renderInbox(W, H) {
   const d = drafts[sel.inbox];
   checkRemote(d);
   body.push("", rule(W));
-  body.push(` ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(`by ${d.author}`, "gray")}${d.source === "link" ? paint("  ·  added by link", "cyan") : d.source === "auto" ? paint("  ·  found by the watcher", "gray") : ""}   ${remoteNote(d)}`);
+  body.push(` ${paint(`${d.repo}#${d.number}`, "bold")}  ${paint(`by ${d.author}`, "gray")}${d.source === "link" ? paint("  ·  added by link", "cyan") : d.source === "auto" ? paint("  ·  found by the watcher", "gray") : d.source === "recheck" ? paint("  ·  rechecked after a reply or resolved comment", "yellow") : ""}   ${remoteNote(d)}`);
   body.push("");
   for (const l of wrap(d.summary, W - 4, "  ")) body.push(md(l));
   return [...head, ...pad(body, bodyH), ...foot];
@@ -615,21 +615,49 @@ function historySummary(all) {
   return `${all.length} PR${all.length === 1 ? "" : "s"} reviewed so far${bits.length ? `: ${bits.join(", ")}` : ""}.`;
 }
 
+const historyEntries = () => Object.entries(getReviewed()).sort((a, b) => (b[1].at ?? "").localeCompare(a[1].at ?? ""));
+
 function renderHistory(W, H) {
   const head = tabStrip(W);
-  const all = Object.entries(getReviewed()).sort((a, b) => (b[1].at ?? "").localeCompare(a[1].at ?? ""));
-  const foot = bottom([["↑↓", "scroll"], ...GLOBAL_KEYS], historySummary(all), W);
+  const all = historyEntries();
+  sel.history = Math.max(0, Math.min(sel.history, all.length - 1));
+  const foot = bottom([["↑↓", "move"], ["r/⏎", "recheck"], ["o", "browser"], ...GLOBAL_KEYS], historySummary(all), W);
   const bodyH = H - head.length - foot.length;
   const COLOR = { posted: "green", drafted: "yellow", discarded: "gray", failed: "red" };
+  const height = ([, v]) => (v.status === "failed" && v.error ? 2 : 1);
+  const selTop = 1 + all.slice(0, sel.history).reduce((n, e) => n + height(e), 0); // line of the chosen row, below the header
   const body = all.length
-    ? [paint(`   ${"STATUS".padEnd(10)}${"PR".padEnd(Math.max(10, W - 48))} ${"POSTED AS".padEnd(16)}${"TOOK".padEnd(8)}WHEN`, "gray"), ...all.flatMap(([key, v]) => {
-      const row = `   ${paint((v.status ?? "?").padEnd(10), COLOR[v.status] ?? "gray", "bold")}${fitPlain(key, Math.max(10, W - 48))} ` +
+    ? [paint(`   ${"STATUS".padEnd(10)}${"PR".padEnd(Math.max(10, W - 48))} ${"POSTED AS".padEnd(16)}${"TOOK".padEnd(8)}WHEN`, "gray"), ...all.flatMap(([key, v], i) => {
+      const mark = i === sel.history ? paint(" ▸ ", "cyan", "bold") : "   ";
+      const row = `${mark}${paint((v.status ?? "?").padEnd(10), COLOR[v.status] ?? "gray", "bold")}${fitPlain(key, Math.max(10, W - 48))} ` +
         paint(`${(v.event ?? "").padEnd(16)}${formatDuration(v.seconds).padEnd(8)}${age(v.at ?? 0)} ago`, "gray");
       return v.status === "failed" && v.error ? [row, paint(`             ${String(v.error).split("\n")[0]}`, "red")] : [row];
     })]
     : ["", paint("    Nothing yet. Reviews you post or discard are listed here.", "gray")];
+  if (all.length) { // keep the chosen row on screen
+    const selEnd = selTop + height(all[sel.history]);
+    if (selTop - 1 < scroll) scroll = Math.max(0, selTop - 1);
+    if (selEnd > scroll + bodyH) scroll = selEnd - bodyH;
+  }
   scroll = Math.max(0, Math.min(scroll, body.length - bodyH));
   return [...head, ...pad(body.slice(scroll, scroll + bodyH), bodyH), ...foot];
+}
+
+// Review a PR from History again, from scratch, in the background; the new review lands in the Inbox.
+function askRecheck(key, v) {
+  const m = /^(.+)#(\d+)$/.exec(key);
+  if (!m) return setFlash("Can't tell which PR that is.", "red");
+  const [, repo, number] = m;
+  confirm = {
+    label: `Review ${paint(key, "bold")} again${v?.status === "posted" ? " (it was already posted)" : ""}? It goes to the Inbox, nothing is posted.`,
+    onYes: () => {
+      const child = spawn(process.execPath, [path.join(ROOT, "src", "review.js"), `https://github.com/${repo}/pull/${number}`, "--draft"], {
+        stdio: "ignore", detached: true, env: process.env,
+      });
+      child.unref();
+      setFlash(`Re-reviewing ${key} in the background. It shows up in the Inbox when it's ready.`, "cyan", 6000);
+    },
+  };
 }
 
 // ---------- Update ----------
@@ -751,7 +779,7 @@ function renderHelp(W, H) {
   const foot = bottom([["any key", "close"]], "", W);
   const k = (a, b) => `    ${paint(a.padEnd(12), "cyan", "bold")}${b}`;
   const left = ["", paint(" Moving around", "bold", "blue"),
-    k("tab", "next tab (shift+tab: previous)"), k("i r s h u", "Inbox, Repos, Settings, History, Update"), k("esc", "back"), k("q", "quit"),
+    k("tab", "next tab (shift+tab: previous)"), k("i r s h u", "Inbox, Repos, Settings, History, Update (r is recheck in History)"), k("esc", "back"), k("q", "quit"),
     "", paint(" Inbox", "bold", "blue"),
     k("⏎", "open a review"), k("p", "post it to GitHub (asks first)"), k("d", "discard it, nothing is posted"),
     k("a / r / c", "inside a review: approve / request changes / comment"), k("1-9", "inside a review: turn a comment on or off"),
@@ -761,6 +789,8 @@ function renderHelp(W, H) {
     k("⏎", "every PR / only when you're asked"), k("f / m", "final word / model for that repo only"),
     "", paint(" Settings", "bold", "blue"),
     k("⏎ ←→", "change the selected setting"), k("t", "type any model name"), k("E", "edit config.json in your editor"),
+    "", paint(" History", "bold", "blue"),
+    k("↑↓", "choose a PR"), k("r / ⏎", "review it again (it goes to the Inbox)"), k("o", "open the PR in the browser"),
     "", paint(" Update", "bold", "blue"),
     k("⏎", "install the newer release"), k("c", "check GitHub now"), k("a", "turn automatic updates on or off")];
   const half = Math.floor(W / 2);
@@ -1015,6 +1045,17 @@ function onKey(str, key = {}) {
     return render();
   }
 
+  if (tab === "history" && (str === "r" || k === "return")) {
+    const e = historyEntries()[sel.history];
+    if (e) askRecheck(e[0], e[1]);
+    return render();
+  }
+  if (tab === "history" && str === "o") {
+    const m = /^(.+)#(\d+)$/.exec(historyEntries()[sel.history]?.[0] ?? "");
+    if (m) openUrl(`https://github.com/${m[1]}/pull/${m[2]}`);
+    return render();
+  }
+
   // Keys shared by the tab views.
   if (str === "q") return quit();
   if (str === "?") { help = true; return render(); }
@@ -1036,8 +1077,8 @@ function onKey(str, key = {}) {
     else if (str === "o" && d) openUrl(d.url);
     else if (str === "n") askNewReview();
   } else if (tab === "history") {
-    if (k === "up" || k === "k") scroll = Math.max(0, scroll - 1);
-    else if (k === "down" || k === "j") scroll++;
+    if (k === "up" || k === "k") sel.history = Math.max(0, sel.history - 1);
+    else if (k === "down" || k === "j") sel.history = Math.min(Math.max(0, historyEntries().length - 1), sel.history + 1);
   }
   render();
 }

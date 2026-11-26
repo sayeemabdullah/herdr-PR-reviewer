@@ -8,7 +8,7 @@ import test from "node:test";
 // lib.js makes its folders on import, so point it at a throwaway one first.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-test-"));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
-const { loadConfig, mergePRs, reviewModeFor } = await import("../src/lib.js");
+const { loadConfig, mergePRs, recheckDue, reviewModeFor, summarizeThreads } = await import("../src/lib.js");
 
 const writeConfig = (c) => fs.writeFileSync(path.join(tmp, "config.json"), JSON.stringify(c));
 const pr = (repo, number) => ({ repo, number, title: `#${number}` });
@@ -68,4 +68,33 @@ test("with the default and no repos listed, the watcher has nothing to do and sa
   assert.equal(loadConfig().missing, true);
   writeConfig({ repos: [], onlyListedRepos: false });
   assert.equal(loadConfig().missing, false);
+});
+
+test("recheck is off by default, and only posted, non-approving reviews come due after the set hours", () => {
+  assert.equal(loadConfig().recheck, false);
+  assert.equal(loadConfig().recheckHours, 24);
+  const now = Date.parse("2026-01-10T12:00:00Z");
+  const posted = { status: "posted", event: "COMMENT", at: "2026-01-09T10:00:00Z" }; // 26 hours ago
+  const on = { recheck: true, recheckHours: 24 };
+  assert.equal(recheckDue(posted, { recheck: false, recheckHours: 24 }, now), false);
+  assert.equal(recheckDue(posted, on, now), true);
+  assert.equal(recheckDue(posted, { ...on, recheckHours: 48 }, now), false);
+  assert.equal(recheckDue(posted, on, now, now - 3600_000), false); // we looked an hour ago
+  assert.equal(recheckDue({ ...posted, event: "APPROVE" }, on, now), false); // already approved
+  assert.equal(recheckDue({ ...posted, status: "drafted" }, on, now), false);
+  assert.equal(recheckDue(undefined, on, now), false);
+});
+
+test("summarizeThreads counts only your threads: resolved, replied-to, still open", () => {
+  const c = (...who) => ({ nodes: who.map((login) => ({ author: { login } })) });
+  const nodes = [
+    { isResolved: true, comments: c("Me", "dev") }, // mine, fixed
+    { isResolved: false, comments: c("me", "dev") }, // mine, replied, open
+    { isResolved: false, comments: c("me", "me") }, // mine, I only followed up myself
+    { isResolved: false, comments: c("someone", "me") }, // not mine
+  ];
+  const t = summarizeThreads(nodes, "me");
+  assert.deepEqual([t.total, t.resolved, t.replied, t.open, t.sig], [3, 1, 2, 2, "1/2"]);
+  assert.equal(summarizeThreads([], "me").sig, "0/0");
+  assert.equal(summarizeThreads(undefined, "me").total, 0);
 });

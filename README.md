@@ -38,7 +38,7 @@ Reviews wait in an inbox until you **post**, edit or discard them. Or turn that 
 <td width="33%" valign="top">
 
 ### Follow-ups
-After new commits it gets its previous review and the changes since, says what's fixed (and can mark those threads resolved), and doesn't repeat itself.
+After new commits it gets its previous review and the changes since, says what's fixed (and can mark those threads resolved), and doesn't repeat itself. Optionally (`recheck`, off by default) it also looks again after a set time when the author replied to a comment or resolved it, and can approve.
 
 </td>
 </tr>
@@ -199,7 +199,7 @@ right now, and <kbd>?</kbd> shows all of them.
 | **Inbox** | AI reviews waiting for your final word: read, change, post or discard them. Reviews running now are listed on top |
 | **Repos** | which repos are watched. Add one by picking from your GitHub repos, remove one with <kbd>x</kbd> |
 | **Settings** | model and effort, final word, cheaper model for small PRs, big-PR limits, repos and authors to skip, how often to check, and more |
-| **History** | what was posted, discarded or failed, how long each review took, and why. The tab shows how many PRs are done (`History 12`) |
+| **History** | what was posted, discarded or failed, how long each review took, and why. The tab shows how many PRs are done (`History 12`). Pick any row with <kbd>↑</kbd><kbd>↓</kbd> and press <kbd>r</kbd> to review that PR again: the new review goes to the Inbox, nothing is posted until you say so |
 | **Update** | the version you have, the newest release and what's new in it, and a key to install it. [More below](#update) |
 
 Open it with any of:
@@ -378,6 +378,8 @@ All of these go in `config.json`, and the common ones can be changed in [PR Pane
 | `ignoreAuthors` | bots | PR authors to skip |
 | `skipDrafts` | `true` | leave draft PRs alone |
 | `rereviewOnPush` | `true` | review again when new commits are pushed |
+| `recheck` | `false` | off by default. When on, a PR you reviewed is looked at again after `recheckHours` if the author replied to one of your comments or resolved it, even with no new commit. It may then approve. Needs the PR to still be open |
+| `recheckHours` | `24` | how long after posting (or after the last look) before that check. One PR is asked about at most once per this time, and reviewed again only when something changed |
 
 </details>
 
