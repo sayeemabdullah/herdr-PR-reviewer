@@ -199,7 +199,7 @@ right now, and <kbd>?</kbd> shows all of them.
 | **Inbox** | AI reviews waiting for your final word: read, change, post or discard them. Reviews running now are listed on top |
 | **Repos** | which repos are watched. Add one by picking from your GitHub repos, remove one with <kbd>x</kbd> |
 | **Settings** | model and effort, final word, cheaper model for small PRs, big-PR limits, repos and authors to skip, how often to check, and more |
-| **History** | what was posted, discarded or failed, how long each review took, and why. The tab shows how many PRs are done (`History 12`) |
+| **History** | what was posted, discarded or failed, how long each review took, and why. The tab shows how many PRs are done (`History 12`). Pick any row with <kbd>↑</kbd><kbd>↓</kbd> and press <kbd>r</kbd> to review that PR again: the new review goes to the Inbox, nothing is posted until you say so |
 | **Update** | the version you have, the newest release and what's new in it, and a key to install it. [More below](#update) |
 
 Open it with any of:
