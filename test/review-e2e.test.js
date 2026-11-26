@@ -305,3 +305,18 @@ test("the post CLI (what the panel runs in the background) prints one JSON line,
   assert.equal(gone.status, 1);
   assert.match(JSON.parse(gone.stdout).error, /no longer in the inbox/);
 });
+
+test("a fixed comment keeps its severity, so it matches the text that was posted; earlier comments are remembered across reviews", async () => {
+  fresh();
+  const lastReview = { verdict: "request_changes", summary: "s", comments: [
+    { path: "src/app.js", line: 2, body: "null?", severity: "blocker" }, { path: "src/app.js", line: 1, body: "naming", severity: "nit" }] };
+  markReviewed("o/r#1", { sha: "0".repeat(40), status: "posted", event: "COMMENT", lastReview });
+  process.env.FIXED = "[1]";
+  try {
+    const r = await reviewPR(cfg({ finalWord: true, resolveFixed: true }), "o/r", 1, { log: () => {} });
+    assert.deepEqual(r.draft.fixed, [{ path: "src/app.js", line: 2, body: "null?", severity: "blocker" }]);
+  } finally { delete process.env.FIXED; }
+  // The nit that still stands is remembered next to the new comment.
+  const remembered = getReviewed()["o/r#1"].lastReview.comments.map((c) => c.body);
+  assert.ok(remembered.includes("naming") && remembered.includes("nit") && !remembered.includes("null?"));
+});

@@ -295,8 +295,11 @@ export function postStoredDraft(key, cfg) {
   if (!d) throw new Error("that review is no longer in the inbox");
   const event = postReview(d, settingsFor(cfg, d.repo));
   deleteDraft(key);
+  // What I've said so far: the earlier comments that still stand (kept when the draft was made) plus what was just posted.
+  const mine = d.comments.filter((c) => !c.excluded);
+  const standing = postedComments(getReviewed()[key]?.lastReview).filter((c) => !d.comments.some((x) => x.path === c.path && x.body === c.body));
   markReviewed(key, { sha: d.headSha, status: "posted", event, error: null,
-    lastReview: { verdict: d.verdict, summary: d.summary, comments: d.comments.filter((c) => !c.excluded) } });
+    lastReview: { verdict: d.verdict, summary: d.summary, comments: mergeKnownComments(standing, [], mine) } });
   return { event, resolved: d.resolvedCount ?? 0 };
 }
 
@@ -580,6 +583,17 @@ export function numberDiff(diff) {
 
 /** The comments of an earlier review that were actually posted (the ones switched off in the inbox never were). */
 export const postedComments = (review) => (review?.comments ?? []).filter((c) => !c.excluded);
+
+/**
+ * The comments to remember as "what I said so far": the earlier ones that still stand (not marked fixed this time) plus the new ones.
+ * Without this a later review that only adds new comments would make the earlier, still open threads forgotten, and they could
+ * never be marked resolved. Same path and text counts as the same comment; keeps the newest `cap`.
+ */
+export function mergeKnownComments(earlier, fixed, fresh, cap = 40) {
+  const same = (a, b) => a.path === b.path && a.body === b.body;
+  const kept = earlier.filter((c) => !fixed.some((f) => same(f, c)) && !fresh.some((f) => same(f, c)));
+  return [...kept, ...fresh].slice(-cap);
+}
 
 /** How much a comment matters, least to most. A comment without one counts as "important". */
 export const SEVERITIES = ["nit", "important", "blocker"];
@@ -1008,7 +1022,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
       }
     }
 
-    let review, seconds = null, prevPosted = [], picked = null;
+    let review, seconds = null, prevPosted = [], picked = null, earlier = [];
     try {
       // Follow-up review: what we said last time + what changed since.
       const prevState = getReviewed()[key];
@@ -1026,6 +1040,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
           : `  follow-up review since ${prevState.sha.slice(0, 7)}${previous.sinceDiff ? "" : " (old commit gone; full diff only)"}`);
       }
       prevPosted = postedComments(previous?.review);
+      earlier = postedComments(prevState?.lastReview);
       const feedback = existingFeedback(repo, number, settings.footer);
       const rules = settings.repoRules ? repoReviewRules(repo, pr.baseRefName) : "";
       if (rules) log(`  following REVIEW.md from ${pr.baseRefName}`);
@@ -1081,7 +1096,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     }
 
     const fixed = settings.resolveFixed
-      ? [...new Set(review.fixed ?? [])].map((n) => prevPosted[n - 1]).filter(Boolean).map(({ path, line, body }) => ({ path, line, body }))
+      ? [...new Set(review.fixed ?? [])].map((n) => prevPosted[n - 1]).filter(Boolean).map(({ path, line, body, severity }) => ({ path, line, body, ...(severity ? { severity } : {}) })) // severity is part of the posted text
       : [];
     const draft = {
       key, repo, number, title: pr.title, url: pr.url, author: pr.author.login, headSha: pr.headRefOid, seconds, source,
@@ -1090,7 +1105,8 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     };
 
     if (dryRun) return { status: "dry-run", draft };
-    const lastReview = { verdict: draft.verdict, summary: draft.summary, comments: draft.comments.filter((c) => !c.excluded) };
+    const lastReview = { verdict: draft.verdict, summary: draft.summary,
+      comments: mergeKnownComments(earlier, fixed, draft.comments.filter((c) => !c.excluded)) };
     if (settings.finalWord) {
       saveDraft(draft);
       markReviewed(key, { sha: pr.headRefOid, status: "drafted", attempts: 0, error: null, lastReview, seconds });

@@ -8,7 +8,7 @@ import test from "node:test";
 // lib.js makes its folders on import, so point it at a throwaway one first.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-test-"));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
-const { loadConfig, mergePRs, recheckDue, reviewModeFor, summarizeThreads } = await import("../src/lib.js");
+const { loadConfig, mergePRs, mergeKnownComments, recheckDue, reviewModeFor, summarizeThreads } = await import("../src/lib.js");
 
 const writeConfig = (c) => fs.writeFileSync(path.join(tmp, "config.json"), JSON.stringify(c));
 const pr = (repo, number) => ({ repo, number, title: `#${number}` });
@@ -97,4 +97,14 @@ test("summarizeThreads counts only your threads: resolved, replied-to, still ope
   assert.deepEqual([t.total, t.resolved, t.replied, t.open, t.sig], [3, 1, 2, 2, "1/2"]);
   assert.equal(summarizeThreads([], "me").sig, "0/0");
   assert.equal(summarizeThreads(undefined, "me").total, 0);
+});
+
+test("mergeKnownComments keeps earlier comments that still stand, drops fixed and repeated ones, and caps the list", () => {
+  const c = (body, path = "a.js") => ({ path, line: 1, body });
+  const earlier = [c("one"), c("two"), c("three")];
+  assert.deepEqual(mergeKnownComments(earlier, [c("two")], [c("four")]).map((x) => x.body), ["one", "three", "four"]);
+  assert.deepEqual(mergeKnownComments(earlier, [], []).map((x) => x.body), ["one", "two", "three"]); // a review with no new comments forgets nothing
+  assert.deepEqual(mergeKnownComments(earlier, [], [c("one")]).map((x) => x.body), ["two", "three", "one"]); // not twice
+  assert.equal(mergeKnownComments(earlier, [], [c("x", "b.js")]).length, 4); // same text in another file is another comment
+  assert.deepEqual(mergeKnownComments(earlier, [], [c("four")], 2).map((x) => x.body), ["three", "four"]);
 });
