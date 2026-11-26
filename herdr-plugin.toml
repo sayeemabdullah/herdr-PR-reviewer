@@ -1,6 +1,6 @@
 id = "pr-reviewer"
 name = "PR Reviewer"
-version = "0.9.0"
+version = "0.9.1"
 min_herdr_version = "0.8.0"
 description = "Watch GitHub repos and have Claude (or another AI CLI) review incoming PRs, with an optional human final word"
 platforms = ["macos", "linux"]

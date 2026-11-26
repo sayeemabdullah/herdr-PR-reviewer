@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.1
+
+- **Fixed: posting a review no longer freezes PR Panel.** It used to lock the panel for a few seconds, with only <kbd>q</kbd> working. Posting now runs in the background:
+  keys keep working, the row shows `posting…`, and a second post, edit or discard of the same review is refused until it finishes.
+- **Fixed: "Resolve fixed" now works on labelled comments.** A fixed comment that had a `blocker` or `nit` label was matched against text that was never posted, so its
+  thread was never resolved. Found by running real reviews on a GitHub test repo.
+- **Fixed: earlier comments are no longer forgotten.** After a review that only added new comments, older comments that were still open were lost, so they could never
+  be marked fixed later. Comments that still stand are now remembered (the newest 40).
+
 ## 0.9.0
 
 - **New: recheck any PR from History.** Pick a row with <kbd>↑</kbd><kbd>↓</kbd> and press <kbd>r</kbd> (or <kbd>⏎</kbd>) to review that PR again from scratch.

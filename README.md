@@ -81,10 +81,10 @@ herdr plugin action invoke pr-reviewer.install-cli   # optional: adds the `pr-pa
 Check that it's there, and which version you got:
 
 ```sh
-herdr plugin list      # - pr-reviewer (PR Reviewer) enabled [github:sayeemabdullah/herdr-PR-reviewer@v0.9.0]
+herdr plugin list      # - pr-reviewer (PR Reviewer) enabled [github:sayeemabdullah/herdr-PR-reviewer@v0.9.1]
 ```
 
-That installs the latest release. To pin a version, add `--ref v0.9.0`. To remove it: `herdr plugin uninstall pr-reviewer`.
+That installs the latest release. To pin a version, add `--ref v0.9.1`. To remove it: `herdr plugin uninstall pr-reviewer`.
 Your settings live in a separate config folder, so reinstalling or updating never loses them.
 
 **2. Pick your repos.** Only the repos you list are reviewed. A PR you're asked to review in any other repo (a work repo, say) is ignored, unless you change that in Settings → **Which repos**.
@@ -122,7 +122,7 @@ herdr plugin action invoke pr-reviewer.watch
 > [!TIP]
 > Config changes apply on the next check, within 3 minutes. Nothing needs restarting.
 
-**5. Keep it up to date.** Open PR Panel and press <kbd>u</kbd> (the **Update** tab). When a newer release exists, the tab shows `↑0.9.0`: press <kbd>Enter</kbd> to install it. [How updates work](#update).
+**5. Keep it up to date.** Open PR Panel and press <kbd>u</kbd> (the **Update** tab). When a newer release exists, the tab shows `↑0.9.1`: press <kbd>Enter</kbd> to install it. [How updates work](#update).
 
 <a id="how-it-works"></a>
 
@@ -321,7 +321,7 @@ A list (repos to skip, risky paths, …) is typed as comma separated text: press
 
 PR Reviewer is installed from GitHub, and herdr doesn't update it by itself. The **Update** tab (<kbd>u</kbd>) does:
 
-- it shows the version you have, the newest release and **what's new** in it (the release notes). A `↑0.9.0` on the tab says a newer one exists;
+- it shows the version you have, the newest release and **what's new** in it (the release notes). A `↑0.9.1` on the tab says a newer one exists;
 - <kbd>Enter</kbd> installs it (asks first). The watcher restarts on the new version once no review is running, and you reopen PR Panel (<kbd>q</kbd>) to use it;
 - <kbd>c</kbd> checks GitHub now, otherwise it looks about every 6 hours while the watcher runs, and tells you once per version;
 - <kbd>a</kbd> turns **automatic updates** on: the watcher then installs a newer release by itself, when no review is running, and restarts. It is **off by default**, because it installs code on your machine without asking.
