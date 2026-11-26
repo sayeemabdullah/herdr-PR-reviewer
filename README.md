@@ -81,10 +81,10 @@ herdr plugin action invoke pr-reviewer.install-cli   # optional: adds the `pr-pa
 Check that it's there, and which version you got:
 
 ```sh
-herdr plugin list      # - pr-reviewer (PR Reviewer) enabled [github:sayeemabdullah/herdr-PR-reviewer@v0.8.0]
+herdr plugin list      # - pr-reviewer (PR Reviewer) enabled [github:sayeemabdullah/herdr-PR-reviewer@v0.9.0]
 ```
 
-That installs the latest release. To pin a version, add `--ref v0.8.0`. To remove it: `herdr plugin uninstall pr-reviewer`.
+That installs the latest release. To pin a version, add `--ref v0.9.0`. To remove it: `herdr plugin uninstall pr-reviewer`.
 Your settings live in a separate config folder, so reinstalling or updating never loses them.
 
 **2. Pick your repos.** Only the repos you list are reviewed. A PR you're asked to review in any other repo (a work repo, say) is ignored, unless you change that in Settings → **Which repos**.
@@ -122,7 +122,7 @@ herdr plugin action invoke pr-reviewer.watch
 > [!TIP]
 > Config changes apply on the next check, within 3 minutes. Nothing needs restarting.
 
-**5. Keep it up to date.** Open PR Panel and press <kbd>u</kbd> (the **Update** tab). When a newer release exists, the tab shows `↑0.8.0`: press <kbd>Enter</kbd> to install it. [How updates work](#update).
+**5. Keep it up to date.** Open PR Panel and press <kbd>u</kbd> (the **Update** tab). When a newer release exists, the tab shows `↑0.9.0`: press <kbd>Enter</kbd> to install it. [How updates work](#update).
 
 <a id="how-it-works"></a>
 
@@ -152,7 +152,7 @@ It replies with a verdict (**approve**, **request changes** or **comment**), a s
 <details>
 <summary><b>The details</b></summary>
 
-- When you're only a *requested* reviewer, re-reviews stop once you've posted, because GitHub then takes you off the requested list. If the author asks you again, it reviews again.
+- When you're only a *requested* reviewer, re-reviews stop once you've posted, because GitHub then takes you off the requested list. If the author asks you again, it reviews again. With `recheck` on, it also looks again at PRs you posted on, after `recheckHours`, when the author replied or resolved a comment.
 - On your own PRs, GitHub only allows a comment, so the review is posted as one.
 - Draft PRs wait until they're marked ready for review.
 - A diff over `maxDiffChars` is split into parts of whole files (at most `maxParts`), each reviewed on its own and merged into one review. Each part is a full run, so a big PR costs that many reviews. `"splitLarge": false` goes back to cutting it off.
@@ -225,7 +225,7 @@ You don't have to open it to know what's going on: the watcher shows up in herdr
 The top line shows whether the watcher is running and which PR it's reviewing right now. The list updates by itself.
 
 - **Reviewing now.** A block at the top lists every review that is running, with how long it has run and where it came from: **a link you gave** (<kbd>n</kbd>) or **found by the watcher**. The tab shows it too, like `Inbox 3 ⟳2`.
-- **Where a review came from.** Each finished review is tagged `link` (you pasted its link) or `auto` (the watcher found it), and the preview says so. Reviews written before this tag existed show nothing.
+- **Where a review came from.** Each finished review is tagged `link` (you pasted its link), `auto` (the watcher found it) or `recheck` (the watcher looked again after a reply or a resolved comment), and the preview says so. Reviews written before this tag existed show nothing.
 
 Each review is checked against GitHub:
 
@@ -321,7 +321,7 @@ A list (repos to skip, risky paths, …) is typed as comma separated text: press
 
 PR Reviewer is installed from GitHub, and herdr doesn't update it by itself. The **Update** tab (<kbd>u</kbd>) does:
 
-- it shows the version you have, the newest release and **what's new** in it (the release notes). A `↑0.8.0` on the tab says a newer one exists;
+- it shows the version you have, the newest release and **what's new** in it (the release notes). A `↑0.9.0` on the tab says a newer one exists;
 - <kbd>Enter</kbd> installs it (asks first). The watcher restarts on the new version once no review is running, and you reopen PR Panel (<kbd>q</kbd>) to use it;
 - <kbd>c</kbd> checks GitHub now, otherwise it looks about every 6 hours while the watcher runs, and tells you once per version;
 - <kbd>a</kbd> turns **automatic updates** on: the watcher then installs a newer release by itself, when no review is running, and restarts. It is **off by default**, because it installs code on your machine without asking.
