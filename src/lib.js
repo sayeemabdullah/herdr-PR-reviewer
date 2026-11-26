@@ -282,6 +282,24 @@ export function saveDraft(d) {
 export function deleteDraft(key) {
   fs.rmSync(path.join(DRAFTS_DIR, keyFile(key)), { force: true });
 }
+export function getDraft(key) {
+  return readJson(path.join(DRAFTS_DIR, keyFile(key)), null);
+}
+
+/**
+ * Post the saved draft `key` to GitHub, then move it from the inbox to the history. Throws if there is no such draft or posting fails
+ * (the draft stays in the inbox then). Returns { event, resolved } (how many fixed threads were marked resolved).
+ */
+export function postStoredDraft(key, cfg) {
+  const d = getDraft(key);
+  if (!d) throw new Error("that review is no longer in the inbox");
+  const event = postReview(d, settingsFor(cfg, d.repo));
+  deleteDraft(key);
+  markReviewed(key, { sha: d.headSha, status: "posted", event, error: null,
+    lastReview: { verdict: d.verdict, summary: d.summary, comments: d.comments.filter((c) => !c.excluded) } });
+  return { event, resolved: d.resolvedCount ?? 0 };
+}
+
 export function listDrafts() {
   return fs
     .readdirSync(DRAFTS_DIR)
