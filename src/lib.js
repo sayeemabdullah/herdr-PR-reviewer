@@ -544,6 +544,24 @@ export function parsePRUrl(url) {
   return m ? { repo: m[1], number: Number(m[2]) } : null;
 }
 
+/** A GitHub stacked pull requests link: github.com/owner/repo/stack/N. */
+export function parseStackUrl(url) {
+  const m = /github\.com\/([^/]+\/[^/]+)\/stack\/(\d+)/.exec(url ?? "");
+  return m ? { repo: m[1], number: Number(m[2]) } : null;
+}
+
+/** A stack's PRs, bottom to top (the order GitHub lists them): { repo, number, layers: [{ number, title, open }] }. */
+export function getStack(repo, number) {
+  let stack;
+  try {
+    stack = ghJson(["api", "-H", "X-GitHub-Api-Version: 2026-03-10", `repos/${repo}/stacks/${number}`]);
+  } catch (e) {
+    throw new Error(`couldn't read stack ${number} of ${repo}: ${String(e.message).split("\n")[0]}`);
+  }
+  const layers = (stack.pull_requests ?? []).map((p) => ({ number: p.number, title: p.title ?? "", open: p.state === "open" }));
+  return { repo, number, layers };
+}
+
 /** Lines (new-file numbering) that GitHub will accept inline comments on: added + context lines in hunks. */
 export function commentableLines(diff) {
   const map = new Map();
@@ -870,7 +888,7 @@ const cut = (s, n) => (s.length > n ? s.slice(0, n) + "\n... [truncated]" : s);
  * Exported for tests.
  */
 export function buildPrompt(pr, settings, ctx) {
-  const { diff, skipped = [], codeAccess = false, previous = null, feedback = "", commentable = "", rules = "", part = null } = ctx;
+  const { diff, skipped = [], codeAccess = false, previous = null, feedback = "", commentable = "", rules = "", part = null, stack = null } = ctx;
   const truncated = diff.length > settings.maxDiffChars;
   const shown = numberDiff(cut(diff, settings.maxDiffChars));
   const prev = previous?.review;
@@ -901,6 +919,10 @@ ${cutFiles.map((f) => `- ${f}`).join("\n")}
 ` : ""}` : ""}
 ${part ? `LARGE PR, PART ${part.n} OF ${part.of}: this PR is too big for one pass, so it is reviewed in parts. Review ONLY the ${part.files.length} files
 in the diff below; the other parts are reviewed separately. Keep your summary to these files.
+
+` : ""}${stack ? `STACKED PR: this is layer ${stack.position} of ${stack.layers.length} in a stack (layer 1 is the bottom; each PR builds on the one below it). Review only
+this PR's own changes. The other layers are listed inside <pr>. Don't ask for something a later layer is clearly there to add, but
+still report anything that is broken or unsafe as of this PR.
 
 ` : ""}Focus on correctness, bugs, security, missing edge cases, tests, and clarity. Skip pure style nitpicks.
 Verdict rules:
@@ -966,7 +988,9 @@ Title: ${pr.title}
 Author: ${pr.author.login}
 Branch: ${pr.headRefName} -> ${pr.baseRefName}
 Size: ${pr.changedFiles} files, +${pr.additions} -${pr.deletions}
-Description:
+${stack ? `Stack, bottom to top:
+${stack.layers.map((l, i) => `${i + 1}. #${l.number} ${l.title}${i + 1 === stack.position ? " <- this PR" : l.open ? "" : " (merged or closed)"}`).join("\n")}
+` : ""}Description:
 ${pr.body || "(none)"}
 ${feedback ? `\nExisting review comments:\n${feedback}\n` : ""}${skipped.length ? `\nLeft out of the diff (lockfiles/generated, per config): ${skipped.join(", ")}\n` : ""}${previous?.sinceDiff ? `
 Changes since your last review (${previous.sha.slice(0, 7)}..${pr.headRefOid.slice(0, 7)}):
@@ -1000,7 +1024,7 @@ export function parseAgentOutput(text) {
  * Review one PR end to end. Returns { status, ... } — never throws for "expected" skips.
  * opts.force: review even if drafts/own/ignored.
  */
-export async function reviewPR(cfg, repo, number, { force = false, dryRun = false, log = console.log, source = "auto", recheck = false } = {}) {
+export async function reviewPR(cfg, repo, number, { force = false, dryRun = false, log = console.log, source = "auto", recheck = false, stack = null } = {}) {
   const settings = settingsFor(cfg, repo);
   const key = prKey(repo, number);
   return withLock(key, async () => {
@@ -1056,7 +1080,7 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
         log(`  running ${cmd}${checkout ? " with read-only code access" : ""} …`);
         const startedAt = Date.now();
         const stdout = await runAsync(cmd, args, {
-          input: buildPrompt(pr, settings, { skipped, codeAccess: !!checkout, feedback, rules, ...ctx }),
+          input: buildPrompt(pr, settings, { skipped, codeAccess: !!checkout, feedback, rules, stack, ...ctx }),
           timeoutMs: settings.agent.timeoutSeconds * 1000,
           cwd: checkout?.dir ?? STATE_DIR, // without code access, keep the agent away from any project files
         });
@@ -1120,3 +1144,31 @@ export async function reviewPR(cfg, repo, number, { force = false, dryRun = fals
     return { status: "posted", event, draft };
   }, source);
 }
+
+/**
+ * Review every open PR of a stack, one after another, bottom first. A PR that fails is recorded in History and the rest still run.
+ * Returns { stack, results: [{ number, status, ... }] }.
+ */
+export async function reviewStack(cfg, repo, number, { dryRun = false, log = console.log } = {}) {
+  const stack = getStack(repo, number);
+  const results = [];
+  for (const [i, layer] of stack.layers.entries()) {
+    if (!layer.open) continue;
+    log(`stack ${number}: layer ${i + 1} of ${stack.layers.length}, ${repo}#${layer.number}`);
+    try {
+      const r = await reviewPR(cfg, repo, layer.number,
+        { force: true, dryRun, log, source: "link", stack: { layers: stack.layers, position: i + 1 } });
+      results.push({ number: layer.number, ...(r.skipped ? { status: "skipped", why: r.skipped } : r) });
+    } catch (e) {
+      // attempts at the watcher's limit: a review you asked for isn't retried (and maybe posted) on its own.
+      if (!dryRun) markReviewed(prKey(repo, layer.number), { status: "failed", attempts: 3, failedSha: shaOrNone(repo, layer.number), error: e.message });
+      log(`  failed: ${String(e.message).split("\n")[0]}`);
+      results.push({ number: layer.number, status: "failed", error: e.message });
+    }
+  }
+  return { stack, results };
+}
+
+const shaOrNone = (repo, n) => {
+  try { return headSha(repo, n); } catch { return undefined; }
+};

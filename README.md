@@ -227,6 +227,14 @@ The top line shows whether the watcher is running and which PR it's reviewing ri
 - **Reviewing now.** A block at the top lists every review that is running, with how long it has run and where it came from: **a link you gave** (<kbd>n</kbd>) or **found by the watcher**. The tab shows it too, like `Inbox 3 ⟳2`.
 - **Where a review came from.** Each finished review is tagged `link` (you pasted its link), `auto` (the watcher found it) or `recheck` (the watcher looked again after a reply or a resolved comment), and the preview says so. Reviews written before this tag existed show nothing.
 
+#### Stacked pull requests
+
+Press <kbd>n</kbd> and paste a stack link (`github.com/owner/repo/stack/123`). Every open PR in the stack is reviewed one after another, from the bottom up. Merged and closed ones are skipped; drafts are included.
+
+- Each PR gets its own review of its own changes and lands in the Inbox as a draft. Nothing is posted until you post it.
+- Each review is told which layer it is and what the other PRs are, so it doesn't ask for what a later layer adds.
+- The panel says how many PRs it found, or why the stack couldn't be read. A PR that fails shows in History, and the rest still run.
+
 Each review is checked against GitHub:
 
 | Shows | Means |
@@ -245,7 +253,7 @@ Each review is checked against GitHub:
 | <kbd>p</kbd> | post the selected review (asks first) |
 | <kbd>d</kbd> | discard it. Nothing goes to GitHub |
 | <kbd>o</kbd> | open the PR in your browser |
-| <kbd>n</kbd> | review any PR now: paste its link. It runs in the background |
+| <kbd>n</kbd> | review any PR now: paste its link, or a [stack](#stacked-pull-requests) link. It runs in the background |
 | <kbd>q</kbd> | quit |
 
 </details>
@@ -484,6 +492,7 @@ git clone https://github.com/sayeemabdullah/herdr-PR-reviewer && cd herdr-PR-rev
 herdr plugin link .        # use this folder instead of the GitHub copy
 node --test                # run the tests
 node src/review.js https://github.com/owner/repo/pull/123 --dry-run   # review one PR, post nothing
+node src/review.js https://github.com/owner/repo/stack/45 --draft      # review a stack, save drafts
 ```
 
 Changes go through pull requests with [Conventional Commit](https://www.conventionalcommits.org) titles like `feat(inbox): …` or `fix: …`. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [CHANGELOG](CHANGELOG.md).

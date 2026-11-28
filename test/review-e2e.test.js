@@ -10,7 +10,7 @@ import test from "node:test";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pr-reviewer-e2e-")));
 process.env.HERDR_PLUGIN_CONFIG_DIR = tmp;
 process.env.HERDR_PLUGIN_STATE_DIR = path.join(tmp, "state");
-const { existingFeedback, PROJECT_URL, getDraft, postStoredDraft, getReviewed, listActiveDetails, listActiveReviews, loadConfig, markReviewed, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
+const { parseStackUrl, getStack, reviewStack, existingFeedback, PROJECT_URL, getDraft, postStoredDraft, getReviewed, listActiveDetails, listActiveReviews, loadConfig, markReviewed, repoReviewRules, reviewPR, listDrafts, deleteDraft } = await import("../src/lib.js");
 
 // "GitHub": a repo whose PR #1 head is a commit.
 const origin = path.join(tmp, "origin");
@@ -21,7 +21,7 @@ fs.writeFileSync(path.join(origin, "src/app.js"), "one\ntwo\n");
 git("add", "-A");
 git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "pr");
 const sha = git("rev-parse", "HEAD");
-git("update-ref", "refs/pull/1/head", sha);
+for (const n of [1, 2, 3]) git("update-ref", `refs/pull/${n}/head`, sha);
 
 const DIFF = "diff --git a/src/app.js b/src/app.js\n--- a/src/app.js\n+++ b/src/app.js\n@@ -1,2 +1,2 @@\n one\n-old\n+two\n";
 const bin = path.join(tmp, "bin");
@@ -34,10 +34,14 @@ const script = (name, body) => { fs.writeFileSync(path.join(bin, name), `#!/usr/
 script("gh", `
 const fs = require("fs"), cp = require("child_process"), a = process.argv.slice(2), has = (s) => a.join(" ").includes(s);
 if (has("api user")) console.log("me");
-else if (a[0] === "pr" && a[1] === "view") console.log(JSON.stringify({ number: 1, title: "Add thing", body: "", url: "u", author: { login: "stranger" },
+else if (a[0] === "pr" && a[1] === "view") console.log(JSON.stringify({ number: Number(a[2]), title: "Add thing", body: "", url: "u", author: { login: "stranger" },
   baseRefName: "main", headRefName: "x", headRefOid: ${JSON.stringify(sha)}, isDraft: false, additions: Number(process.env.ADDS || 1), deletions: 1, changedFiles: 1 }));
+else if (a[0] === "pr" && a[1] === "diff" && a[2] === process.env.BREAK_PR) { process.stderr.write("boom\\n"); process.exit(1); }
 else if (a[0] === "pr" && a[1] === "diff") process.stdout.write(process.env.RISKY ? ${JSON.stringify(DIFF)}.split("src/app.js").join("src/auth/login.js") : process.env.DOCS ? ${JSON.stringify(DIFF)}.split("src/app.js").join("docs/guide.md") : process.env.BIG_DIFF ? ["a", "b", "c"].map((f) => "diff --git a/" + f + ".js b/" + f + ".js\\n--- /dev/null\\n+++ b/" + f + ".js\\n@@ -0,0 +1,2 @@\\n+" + "x".repeat(100) + "\\n+y\\n").join("") : ${JSON.stringify(DIFF)});
 else if (a[0] === "repo" && a[1] === "clone") cp.execFileSync("git", ["clone", "-q", "--no-checkout", ${JSON.stringify(origin)}, a[3]]);
+else if (has("stacks/7")) { if (!has("X-GitHub-Api-Version: 2026-03-10")) process.exit(1); console.log(JSON.stringify({ number: 7, base: { ref: "main" }, pull_requests: [
+  { number: 1, title: "Layer one", state: "closed", merged_at: "2026-01-01T00:00:00Z" }, { number: 2, title: "Layer two", state: "open", draft: true }, { number: 3, title: "Layer three", state: "open" }] })); }
+else if (has("stacks/404")) { process.stderr.write("gh: Not Found (HTTP 404)\\n"); process.exit(1); }
 else if (has("/contents/")) { if (has("REVIEW.md?ref=main") && !has(".github/") && process.env.RULES_ON) process.stdout.write("Always check input validation.\\n"); else process.exit(1); }
 else if (has("--method POST")) { fs.writeFileSync(${JSON.stringify(LOG)} + "/posted.json", fs.readFileSync(0, "utf8")); console.log("{}"); }
 else console.log("[]");
@@ -48,6 +52,7 @@ const REVIEW = JSON.stringify({ verdict: "approve", summary: "Looks fine.", comm
 script("claude", `
 const fs = require("fs"), a = process.argv.slice(2), stdin = fs.readFileSync(0, "utf8");
 fs.appendFileSync(${JSON.stringify(LOG)} + "/claude.parts", JSON.stringify(/LARGE PR, PART (\\d) OF (\\d)/.exec(stdin)?.slice(1) ?? null) + "\\n");
+fs.appendFileSync(${JSON.stringify(LOG)} + "/claude.prompts", JSON.stringify(stdin) + "\\n");
 fs.writeFileSync(${JSON.stringify(LOG)} + "/claude.json", JSON.stringify({ argv: a, cwd: process.cwd(), stdinHasPrompt: stdin.includes("<pr>"), numbered: /\\n1\\. src\\/app\\.js:2: null\\?/.test(stdin), asksFixed: stdin.includes('"fixed": ['),
   rules: stdin.includes("<rules>\\nAlways check input validation.\\n</rules>"),
   recheck: stdin.includes("This is a RECHECK"), followUp: stdin.includes("FOLLOW-UP REVIEW"), sinceDiff: stdin.includes("Changes since your last review"),
@@ -319,4 +324,53 @@ test("a fixed comment keeps its severity, so it matches the text that was posted
   // The nit that still stands is remembered next to the new comment.
   const remembered = getReviewed()["o/r#1"].lastReview.comments.map((c) => c.body);
   assert.ok(remembered.includes("naming") && remembered.includes("nit") && !remembered.includes("null?"));
+});
+
+test("a stack link is recognised, and nothing else is", () => {
+  assert.deepEqual(parseStackUrl("https://github.com/Org/some-repo/stack/8115"), { repo: "Org/some-repo", number: 8115 });
+  assert.deepEqual(parseStackUrl(" github.com/o/r/stack/7/ "), { repo: "o/r", number: 7 });
+  assert.equal(parseStackUrl("https://github.com/o/r/pull/7"), null);
+  assert.equal(parseStackUrl(undefined), null);
+});
+
+test("getStack lists every layer bottom to top and says which are open", () => {
+  const st = getStack("o/r", 7);
+  assert.deepEqual(st.layers.map((l) => [l.number, l.title, l.open]), [[1, "Layer one", false], [2, "Layer two", true], [3, "Layer three", true]]);
+  assert.throws(() => getStack("o/r", 404), /stack 404/i);
+});
+
+const prompts = () => fs.readFileSync(path.join(LOG, "claude.prompts"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+
+test("a stack: each open PR is reviewed one after another, bottom first, and told its place", async () => {
+  fresh();
+  fs.rmSync(path.join(LOG, "claude.prompts"), { force: true });
+  const r = await reviewStack(cfg({ finalWord: true }), "o/r", 7, { log: () => {} });
+  assert.deepEqual(r.results.map((x) => [x.number, x.status]), [[2, "drafted"], [3, "drafted"]]);
+  assert.deepEqual(listDrafts().map((d) => d.number), [2, 3]);
+  const [two, three] = prompts();
+  assert.match(two, /layer 2 of 3/);
+  assert.match(three, /layer 3 of 3/);
+  assert.match(two.slice(two.lastIndexOf("<pr>")), /1\. #1 Layer one \(merged or closed\)\n2\. #2 Layer two <- this PR\n3\. #3 Layer three/);
+  assert.equal(fs.existsSync(path.join(LOG, "posted.json")), false);
+});
+
+test("a stack: one failing PR is recorded and the rest are still reviewed", async () => {
+  fresh();
+  process.env.BREAK_PR = "2";
+  try {
+    const r = await reviewStack(cfg({ finalWord: true }), "o/r", 7, { log: () => {} });
+    assert.deepEqual(r.results.map((x) => [x.number, x.status]), [[2, "failed"], [3, "drafted"]]);
+    assert.equal(getReviewed()["o/r#2"].status, "failed");
+    assert.equal(getReviewed()["o/r#2"].attempts, 3);
+  } finally { delete process.env.BREAK_PR; }
+});
+
+test("review.js: --list prints the open PRs of a stack; a stack that can't be read exits 1", () => {
+  const cli = (...a) => spawnSync(process.execPath, [path.join(import.meta.dirname, "../src/review.js"), ...a], { encoding: "utf8" });
+  const ok = cli("https://github.com/o/r/stack/7", "--list");
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.deepEqual(JSON.parse(ok.stdout), { repo: "o/r", number: 7, open: [2, 3] });
+  const bad = cli("https://github.com/o/r/stack/404", "--list");
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /stack 404/i);
 });

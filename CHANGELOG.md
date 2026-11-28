@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **New: review a whole stack from one link.** Press <kbd>n</kbd> and paste a stacked pull requests link (`…/stack/123`), or pass it to `src/review.js`. Every open PR in it
+  is reviewed one after another, bottom first, each told its place in the stack. Reviews land in the Inbox as drafts.
+
 ## 0.9.1
 
 - **Fixed: posting a review no longer freezes PR Panel.** It used to lock the panel for a few seconds, with only <kbd>q</kbd> working. Posting now runs in the background:
