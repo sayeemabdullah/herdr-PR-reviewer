@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 import {
   CONFIG_FILE, HERDR, ROOT, deleteDraft, formatDuration, getReviewed, listActiveDetails, listActiveReviews, listDrafts, loadConfig, markReviewed,
-  parsePRUrl, saveDraft, settingsFor, watcherRunning,
+  parsePRUrl, parseStackUrl, saveDraft, settingsFor, watcherRunning,
 } from "./lib.js";
 import { cannotUpdateReason, installedVersion, parseInstallSource, readUpdateState } from "./update.js";
 import {
@@ -261,7 +261,7 @@ function renderInbox(W, H) {
     if (running.length) body.push(paint("    Finished reviews will show up here for your final word.", "gray"), "");
     else body.push("", paint("    All caught up.", "bold", "green"), "");
     body.push(paint("    New AI reviews show up here on their own, and wait for your final word.", "gray"), "");
-    body.push(`    ${paint("n", "cyan", "bold")}  review any PR now, from its link`);
+    body.push(`    ${paint("n", "cyan", "bold")}  review any PR or stack now, from its link`);
     body.push(`    ${paint("r", "cyan", "bold")}  choose which repos are watched`);
     body.push(`    ${paint("s", "cyan", "bold")}  model, final word and other settings`);
     const { raw: rawNow } = readRawSafe();
@@ -785,7 +785,7 @@ function renderHelp(W, H) {
     "", paint(" Inbox", "bold", "blue"),
     k("⏎", "open a review"), k("p", "post it to GitHub (asks first)"), k("d", "discard it, nothing is posted"),
     k("a / r / c", "inside a review: approve / request changes / comment"), k("1-9", "inside a review: turn a comment on or off"),
-    k("e / E", "inside a review: edit the summary / everything"), k("n", "review any PR now, from its link"), k("o", "open the PR in the browser")];
+    k("e / E", "inside a review: edit the summary / everything"), k("n", "review a PR or a whole stack, from its link"), k("o", "open the PR in the browser")];
   const right = ["", paint(" Repos", "bold", "blue"),
     k("a", "add a repo: search your GitHub repos, or type owner/repo"), k("x", "remove the selected repo"),
     k("⏎", "every PR / only when you're asked"), k("f / m", "final word / model for that repo only"),
@@ -960,18 +960,40 @@ function askDiscard(d) {
   };
 }
 
+function reviewInBackground(url) {
+  const child = spawn(process.execPath, [path.join(ROOT, "src", "review.js"), url, "--draft"], {
+    stdio: "ignore", detached: true, env: process.env,
+  });
+  child.unref();
+}
+
+/** Look the stack up first (in the background), so a bad link or an empty stack is said here; then review it. */
+function startStackReview(url, s) {
+  setFlash(`Reading stack ${s.number} of ${s.repo}…`, "cyan", 30000);
+  execFile(process.execPath, [path.join(ROOT, "src", "review.js"), url, "--list"], { timeout: 30000, env: process.env }, (err, stdout, stderr) => {
+    let open = null;
+    try { open = JSON.parse(stdout).open; } catch {}
+    if (err || !open) setFlash(String(stderr || err?.message || "Couldn't read that stack.").trim().split("\n")[0], "red", 10000);
+    else if (!open.length) setFlash(`Stack ${s.number} has no open pull requests.`, "yellow", 6000);
+    else {
+      reviewInBackground(url);
+      setFlash(`Reviewing ${open.length} PR${open.length === 1 ? "" : "s"} of stack ${s.number} one after another: ${open.map((n) => `#${n}`).join(" ")}. Each shows up here when it's ready.`, "cyan", 10000);
+    }
+    render();
+  });
+}
+
 function askNewReview() {
   input = {
     label: "PR link:",
     value: "",
-    hint: "paste a github.com/…/pull/… link   ⏎ review  esc cancel",
+    hint: "paste a pull request or stack link (…/pull/… or …/stack/…)   ⏎ review  esc cancel",
     onSubmit: (v) => {
+      const s = parseStackUrl(v);
+      if (s) return startStackReview(v.trim(), s);
       const t = parsePRUrl(v);
-      if (!t) return setFlash("That isn't a GitHub pull request link.", "red");
-      const child = spawn(process.execPath, [path.join(ROOT, "src", "review.js"), v.trim(), "--draft"], {
-        stdio: "ignore", detached: true, env: process.env,
-      });
-      child.unref();
+      if (!t) return setFlash("That isn't a GitHub pull request or stack link.", "red");
+      reviewInBackground(v.trim());
       setFlash(`Reviewing ${t.repo}#${t.number} in the background. It shows up here when it's ready.`, "cyan", 6000);
     },
   };
